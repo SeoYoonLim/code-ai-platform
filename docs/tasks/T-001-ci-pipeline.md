@@ -161,3 +161,11 @@ lint-size: ## 파일당 300줄 규칙 검사 (생성물 제외)
 - `python` ✅ / `contracts` ❌: `Check generated client drift` 단계 실패
 - 원인: `gen-dart`가 Java가 있으면 `npx @openapitools/openapi-generator-cli`를 쓰는데, 이 경로는 생성기 jar 버전을 고정하지 않는다. GitHub 러너에는 Java가 있어 최신 jar로 생성됐고, 커밋된 생성물(Docker `v7.10.0`)과 달라졌다. Python과 TS 생성물은 로컬에서 재생성해 비교해 보니 CRLF 외 차이가 없었다
 - 수정: `gen-dart`는 항상 Docker `openapitools/openapi-generator-cli:v7.10.0`을 사용. drift 단계는 변경 파일 목록을 공개 annotation으로 출력 (원본 로그는 인증 필요)
+
+### PR #1 CI 2차 수정 (Claude, 2026-10-21): FILES drift
+- 실제 로그로 원인 재확인: `.openapi-generator/FILES` drift. openapi-generator는 이미 존재하는 test/*.dart와
+  `.openapi-generator-ignore`를 두 번째 생성부터 다시 쓰지 않고 FILES 목록에서도 제외한다.
+  커밋된 FILES(138줄)는 최초 빈 디렉터리 생성 결과였고, 체크아웃된 디렉터리(CI, 로컬 모두)에서
+  `make gen-clients`를 돌리면 항상 74줄짜리 FILES가 나온다.
+- **검증:** `git clone` 신규 클론으로 CI를 그대로 재현해 같은 64줄 삭제를 확인했다 (일관되고 재현 가능).
+- 조치: 74줄 FILES를 커밋. Python/TS 재생성은 CRLF 외 실질 차이 없음을 확인 후 되돌림.
