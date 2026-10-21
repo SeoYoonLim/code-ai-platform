@@ -69,17 +69,21 @@ GPU는 하나이므로 **서빙(개발 테스트)과 학습이 겹치지 않도�
 
 | ID | 작업 | 담당 |
 |---|---|---|
-| T-001 | `git init`, GitHub 원격, 브랜치 보호, PR 템플릿 | C |
-| T-002 | GitHub Actions: `make check` + `make check-contracts` (Docker로 Dart 검증) | C |
-| T-003 | `infra/docker/{backend,ai-engine}.Dockerfile` (uv 멀티스테이지) | X |
-| T-004 | `py_common`: settings, structlog, request_id 미들웨어, Problem 예외 핸들러 (`x-error-catalog` 로더) | C 설계 / X 구현 |
-| T-005 | `create-next-app` (TS strict, App Router), `flutter create` + 생성 클라이언트 연결 | X |
-| **S-01** | **Spike: 더미 LoRA → GGUF 변환 → Ollama `ADAPTER` 로드 → 응답 차이 확인** | C |
-| S-02 | Spike: Ollama `format`(JSON schema) 구조화 출력 준수율 (7B, 샘플 20개) | C |
+git 초기화는 착수 전(10/21)에 끝났다 (`806a236`). 카드: [docs/tasks/](../tasks/README.md)
+
+| ID | 작업 | 담당 |
+|---|---|---|
+| T-001 | GitHub Actions: `make check` + `check-contracts` + 생성물 drift + 300줄 검사 | X |
+| T-002 | `infra/docker/{backend,ai-engine}.Dockerfile` (uv 멀티스테이지) | X |
+| T-003 | `py_common`: settings, structlog, request_id 미들웨어, Problem 예외 핸들러 (에러 카탈로그 생성) | C 설계 / X 구현 |
+| T-004 | Web: `create-next-app` (TS strict) + openapi-fetch 클라이언트 + health 화면 | X |
+| T-005 | Mobile: `flutter create` + api_client 연결 + 딥링크와 푸시 파싱 골격 | X |
+| **S-01** | **Spike: 카나리아 LoRA → GGUF → Ollama `ADAPTER` 로드. 구조화 출력, 어댑터 전환 비용, 8GB VRAM 한계 측정 포함** | C + 사람 |
+| S-02 | Spike: tree-sitter Python/TS 노드 매핑, 청킹 지표, T-014용 fixture | X |
 
 **S-01이 가장 중요하다.** Qwen2.5 LoRA를 GGUF로 변환해 Ollama에서 로드하는 경로가 막히면 개발 환경도 vLLM으로 바꿔야 하고, D6 결정을 다시 해야 한다. W1 안에 결론을 낸다.
 
-**완료 기준:** CI 통과, `make up && make dev` 후 두 서비스의 `/v1/health`가 200, S-01과 S-02 결과를 ADR-0002로 기록.
+**완료 기준:** CI 통과, `make up && make dev` 후 두 서비스의 `/v1/health`가 200, S-01 결과를 ADR-0002로, S-02 결과를 리포트로 기록.
 
 ### M1. Engine Core — 색인 · 검색 · 생성 (W2–W3)
 
@@ -194,8 +198,9 @@ GPU는 하나이므로 **서빙(개발 테스트)과 학습이 겹치지 않도�
 | 리스크 | 영향 | 대응 |
 |---|---|---|
 | Ollama가 GGUF LoRA를 로드하지 못하거나 품질이 떨어짐 | M6 배포 경로 차단 | **W1 Spike S-01**. 실패 시 dev도 vLLM(WSL2)으로 전환 |
-| 7B 모델의 구조화 출력 품질 부족 | R3 미달 | S-02로 조기 측정. 프롬프트·스키마 단순화, 재시도, LoRA로 보정 |
+| 7B 모델의 구조화 출력 품질 부족 | R3 미달 | S-01 M3으로 조기 측정. 프롬프트·스키마 단순화, 재시도, LoRA로 보정 |
 | GPU 1장에서 서빙과 학습 경합 | 개발 지연 | 학습은 야간 배치. 학습 중에는 FakeLLM으로 개발 |
+| **개발 GPU가 RTX 4060 8GB** (Q1 전제는 24GB) | 학습 시퀀스 길이와 서빙 컨텍스트 제한 | S-01에서 측정하고, 필요 시 클라우드 학습, 3B 모델, 컨텍스트 축소 중 선택 (사용자 승인) |
 | 학습 데이터 부족 또는 품질 저하 | 게이트 미통과 | 공개 OSS 저장소 히스토리로 보강 (라이선스 필터). MVP는 base 폴백 허용 |
 | Windows 개발 환경 (make, GPU Docker) | 온보딩 지연 | WSL2 가이드, Makefile 레시피를 `uv run` 직접 실행으로 대체 가능 |
 | 검색 품질 (recall@8 < 0.6) | 분석·채팅 품질 | M1에서 측정. 코드 특화 임베딩으로 교체 (Q2 재검토), 이후 reranker |
