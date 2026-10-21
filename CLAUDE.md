@@ -50,8 +50,8 @@ Codex의 규칙은 [AGENTS.md](AGENTS.md)에 있다. 작업은 **작업 카드**
 | D3 | Ports & Adapters (`core/interfaces` Protocol) | Ollama↔vLLM, Chroma↔타 VectorDB 교체 가능. GPU 없이 Fake로 테스트 |
 | D4 | Contract-first (OpenAPI 3.1 SSOT) | Python/TS/Dart 타입 자동 생성으로 드리프트 차단 |
 | D5 | tree-sitter 심볼 단위 청킹 | 줄 단위 분할 대비 검색 정확도 향상, 결과를 심볼에 매핑 가능 |
-| D6 | dev=Ollama, prod=vLLM | 로컬 개발 편의성 + 운영 시 멀티 LoRA 동시 서빙. 8GB에서 dev vLLM은 3B만 가능 (ADR-0002 D-6) |
-| D9 | **개발 GPU 예산: RTX 4060 8GB** ([ADR-0002](docs/adr/0002-gpu-budget-rtx4060-8gb.md)) | 7B Q4_K_M 서빙(8K ctx, KV q8_0, 2 슬롯 ≈ 5.9GB) / QLoRA 학습 peak < 7GB / 미달 시 3B. 학습과 서빙은 배타적 (`make gpu-train-mode`) |
+| D6 | ~~dev=Ollama, prod=vLLM~~ → **생성 서빙: `llama-server --lora`, Ollama는 임베딩 전용** ([ADR-0003](docs/adr/0003-base-model-and-lora-serving.md)) | Ollama 0.40.7이 LoRA `ADAPTER`를 제거. `llama-server`는 어댑터 전환 ~4ms, 요청별 override 가능. vLLM은 MVP 범위 밖 |
+| D9 | **개발 GPU 예산: RTX 4060 8GB, Base 모델 3B 확정** ([ADR-0002](docs/adr/0002-gpu-budget-rtx4060-8gb.md), [ADR-0003](docs/adr/0003-base-model-and-lora-serving.md)) | Qwen2.5-Coder-**3B**-Instruct Q4_K_M. 서빙 3.77GB(8K ctx, 병렬 2), QLoRA 학습 3.6~4.6GB. 7B는 학습 가드 초과로 폐기. 학습과 서빙은 배타적 (`make gpu-train-mode`) |
 | D7 | `ml/`은 workspace 제외 | torch/CUDA 버전 충돌을 서비스 환경과 격리 |
 | D8 | engine.core는 순수 Python(dataclass) | 프레임워크 비의존. Pydantic은 API 경계(생성 모델)에서만 |
 
@@ -70,7 +70,7 @@ Codex의 규칙은 [AGENTS.md](AGENTS.md)에 있다. 작업은 **작업 카드**
 | `engine/core/interfaces/` | `LLMProvider`, `Embedder`, `VectorStore`, `CodeChunker`, `LoRAAdapterRegistry` | core.models |
 | `engine/core/models/` | 불변 dataclass 도메인 모델 | 표준 라이브러리만 |
 | `engine/core/errors.py` | `EngineError` 계층 (`code`, `retryable`) | — |
-| `engine/adapters/llm/` | `ollama.py`, `vllm.py`, `fake.py` | core, httpx |
+| `engine/adapters/llm/` | `llamacpp.py` (`LlamaServerProvider`, 기본), `fake.py` (`vllm.py`는 MVP 범위 밖) | core, httpx |
 | `engine/adapters/embeddings/` | `ollama_embed.py`, `fake.py` | core, httpx |
 | `engine/adapters/vectorstore/` | `chroma.py`, `in_memory.py` | core, chromadb |
 | `engine/adapters/parsing/` | `treesitter_chunker.py`, `language_map.py` | core, tree-sitter |

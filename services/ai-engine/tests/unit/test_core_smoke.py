@@ -11,6 +11,7 @@ from engine.core.models import ChatMessage, GenerationRequest, Role
 
 def test_interfaces_exported() -> None:
     assert set(interfaces.__all__) == {
+        "ActivityGauge",
         "CodeChunker",
         "Embedder",
         "LLMProvider",

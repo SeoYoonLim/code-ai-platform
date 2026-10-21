@@ -11,7 +11,7 @@
 | [T-003](T-003-py-common-runtime.md) | py_common 런타임 (설정·로깅·request_id·Problem 핸들러) | Codex | T-001 | ready | P1 |
 | [T-004](T-004-web-scaffold.md) | Web 스캐폴딩 (Next.js) | Codex | T-001 | ready | P2 |
 | [T-005](T-005-mobile-scaffold.md) | Mobile 스캐폴딩 (Flutter) | Codex | T-001 | ready | P2 |
-| [S-01](S-01-lora-gguf-ollama.md) | Spike: 8GB VRAM 학습·서빙 측정 + LoRA→GGUF→Ollama ADAPTER | Codex (측정) · Claude (판정) | — | **ready** | **P0 — Codex 첫 작업** |
+| [S-01](S-01-lora-gguf-ollama.md) | Spike: 8GB VRAM 학습·서빙 측정 + LoRA 서빙 경로 | Claude (Codex 스크립트 검증·수정·실행) | — | **done** → [ADR-0003](../adr/0003-base-model-and-lora-serving.md) | — |
 | [S-02](S-02-treesitter-chunker.md) | Spike: tree-sitter Python/TS 청킹 검증 | Codex | — | ready | P1 |
 
 상태: `todo → ready → in-progress → review → done` (막히면 `blocked`)
@@ -32,3 +32,22 @@ S-02 (병행) ─────┘ → T-014 (M1 Chunker) 명세 입력
 - 브랜치: `task/T-001-ci-pipeline` (카드 ID + 슬러그)
 - PR 제목: `T-001: CI 파이프라인`, 본문에 카드 링크와 DoD 체크리스트
 - 카드 1장 = PR 1개. 리뷰는 Claude가 맡는다
+
+## M1 — Engine Core & Adapters (W2–W3: 11/02–11/13)
+
+로드맵: [04-mvp-roadmap.md M1](../architecture/04-mvp-roadmap.md). 서빙 결정: [ADR-0003](../adr/0003-base-model-and-lora-serving.md).
+
+| ID | 제목 | 담당 | 의존 | 상태 | 우선순위 |
+|---|---|---|---|---|---|
+| [T-101](T-101-fake-adapters.md) | Fake 어댑터 3종 + Protocol 적합성(conformance) 스위트 | Codex | — | **ready** | **P0 — M1 첫 작업** |
+| [T-102](T-102-llamaserver-provider.md) | `LlamaServerProvider` (llama-server `--lora`) + compose 서비스 | Codex | T-101 | ready | P0 |
+| [T-103](T-103-ollama-embedder-scheduling.md) | `OllamaEmbedder` + GPU/CPU 동적 스케줄링 | Codex | T-101 | ready | P1 |
+| T-104 ~ T-109 | Chroma · tree-sitter 청커 · 레지스트리 · IndexingService · RagService · API | Codex | T-101~103 결과 | 카드 미작성 | — |
+
+```
+T-101 ─┬─ T-102   (LLM)         ─┐
+       └─ T-103   (Embedder)    ─┼─→ T-104~T-109 (카드는 결과를 보고 작성)
+S-02 (tree-sitter 리포트) ──────┘   (T-105 입력)
+```
+
+**적합성 스위트 규약:** T-101이 만드는 `tests/conformance/*_suite.py`를 T-102·T-103·T-104가 그대로 상속한다. 실제 어댑터의 수락 기준 첫 줄은 항상 "스위트 통과"다.

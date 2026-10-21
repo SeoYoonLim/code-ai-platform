@@ -2,7 +2,7 @@
 
 - **담당:** Codex (측정 스크립트 작성과 실행) · Claude (판정, ADR-0003 작성)
 - **작성:** Claude · 2026-10-21 (rev.2: 8GB 사양 반영)
-- **상태:** ready
+- **상태:** **done** (2026-10-21, 판정: ADR-0003)
 - **우선순위:** **P0, Codex 첫 작업.** 결과에 따라 Base 모델(7B 또는 3B), 컨텍스트 예산, M6 배포 경로가 확정된다
 - **타임박스:** 2일. 넘기면 측정된 부분까지로 판정한다
 - **관련 문서:** [ADR-0002](../adr/0002-gpu-budget-rtx4060-8gb.md) (사양과 판정 기준 D-5), [학습 설정](../../ml/training/configs/), [docker-compose.yml](../../docker-compose.yml)

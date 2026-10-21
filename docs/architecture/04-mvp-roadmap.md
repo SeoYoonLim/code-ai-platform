@@ -83,21 +83,23 @@ git 초기화는 착수 전(10/21)에 끝났다 (`806a236`). 카드: [docs/tasks
 
 **S-01이 가장 중요하다.** 개발 GPU가 RTX 4060 8GB이므로 ([ADR-0002](../adr/0002-gpu-budget-rtx4060-8gb.md)) S-01은 다음 세 가지를 W1 안에 결론 낸다. ① 7B QLoRA 학습이 peak < 7GB로 가능한가, ② 7B Q4 서빙이 8K full GPU로 예산 안에 들어오는가, ③ LoRA → GGUF → Ollama `ADAPTER` 경로가 동작하는가. 판정 결과(7B 또는 3B, Plan A/B/C)는 ADR-0003으로 확정한다.
 
-**완료 기준:** CI 통과, `make up && make dev` 후 두 서비스의 `/v1/health`가 200, S-01 결과를 ADR-0003으로, S-02 결과를 리포트로 기록.
+**완료 기준:** CI 통과, `make up && make dev` 후 두 서비스의 `/v1/health`가 200, S-01 결과는 [ADR-0003](../adr/0003-base-model-and-lora-serving.md)(완료), S-02 결과는 리포트로 기록.
 
 ### M1. Engine Core — 색인 · 검색 · 생성 (W2–W3)
 
 | ID | 작업 | 인터페이스 |
 |---|---|---|
-| T-010 | `adapters/llm/fake.py`, `embeddings/fake.py`, `vectorstore/in_memory.py`, 서비스 테스트용 fixture | 전체 |
-| T-011 | `adapters/llm/ollama.py` (generate, stream, health, 에러 변환) | `LLMProvider` |
-| T-012 | `adapters/embeddings/ollama_embed.py` (`nomic-embed-text`, 배치, L2 정규화, 문서/질의 prefix, **`options.num_gpu=0` CPU 실행**) | `Embedder` |
-| T-013 | `adapters/vectorstore/chroma.py` | `VectorStore` |
-| T-014 | `adapters/parsing/treesitter_chunker.py` — Python, TypeScript + window 폴백 | `CodeChunker` |
-| T-015 | `adapters/registry_file.py` | `LoRAAdapterRegistry` |
-| T-016 | `services/indexing_service.py` (증분, 취소, 진행률) + 인메모리 잡 저장 | — |
-| T-017 | `services/rag_service.py` (§4.1 컨텍스트 조립) | — |
-| T-018 | `api/v1/{system,generate,index,retrieve}.py` + `main.py` DI 조립 + 계약 테스트 | — |
+| [T-101](../tasks/T-101-fake-adapters.md) | `adapters/{llm,embeddings,vectorstore}/fake·in_memory` + 서비스 테스트 fixture | 전체 |
+| [T-102](../tasks/T-102-llamaserver-provider.md) | `adapters/llm/llamacpp.py` (`LlamaServerProvider`: generate/stream/health, 어댑터 전환, 에러 변환) + `docker-compose` llama-server 서비스 ([ADR-0003](../adr/0003-base-model-and-lora-serving.md)) | `LLMProvider` |
+| [T-103](../tasks/T-103-ollama-embedder-scheduling.md) | `adapters/embeddings/ollama_embed.py` (`nomic-embed-text`, 배치, L2 정규화, prefix) + **GPU/CPU 동적 스케줄링** (LLM 유휴 시 GPU, 생성 요청 시 CPU 폴백) | `Embedder` |
+| T-104 | `adapters/vectorstore/chroma.py` | `VectorStore` |
+| T-105 | `adapters/parsing/treesitter_chunker.py` — Python, TypeScript + window 폴백 (S-02 리포트 입력) | `CodeChunker` |
+| T-106 | `adapters/registry_file.py` | `LoRAAdapterRegistry` |
+| T-107 | `services/indexing_service.py` (증분, 취소, 진행률) + 인메모리 잡 저장 | — |
+| T-108 | `services/rag_service.py` (§4.1 컨텍스트 조립) | — |
+| T-109 | `api/v1/{system,generate,index,retrieve}.py` + `main.py` DI 조립 + 계약 테스트 | — |
+
+> T-101~T-103 카드는 작성 완료. T-104~T-109는 앞선 카드 구현 결과를 보고 순차 작성한다.
 
 **완료 기준**
 - 샘플 저장소(~10k LOC Python/TS)를 full 색인하는 데 5분 미만, 파일 1개 변경 시 증분 색인 10초 미만

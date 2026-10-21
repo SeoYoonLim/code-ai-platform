@@ -283,7 +283,7 @@ flowchart LR
 
 | # | 항목 | 제안 | 대안 |
 |---|---|---|---|
-| Q1 | Base 모델 | ~~단일 24GB GPU 전제~~ → **[ADR-0002](../adr/0002-gpu-budget-rtx4060-8gb.md)로 대체:** Qwen2.5-Coder-7B-Instruct Q4_K_M (RTX 4060 8GB), S-01 판정 미달 시 3B-Instruct | 클라우드 학습 (24GB+) |
+| Q1 | Base 모델 | ~~7B~~ → **[ADR-0003](../adr/0003-base-model-and-lora-serving.md)로 확정:** Qwen2.5-Coder-**3B**-Instruct Q4_K_M (7B는 8GB 학습 가드 초과로 폐기). LoRA는 `llama-server --lora`로 서빙 | 클라우드 학습 (24GB+) 후 7B |
 | Q2 | 임베딩 모델 | **Ollama `nomic-embed-text`** (서빙 스택 단일화) | 코드 특화 임베딩 (bge-m3, jina-code 등) — 검색 품질 비교 후 교체 |
 | Q3 | Engine의 코드 접근 방식 | **MVP: 공유 볼륨 읽기 전용 마운트** | 운영: Backend가 파일 내용을 전송 (GPU 노드 분리 시) |
 | Q4 | 재순위화(Reranker) | **MVP 제외**, 검색 품질 지표 확인 후 도입 | cross-encoder reranker 추가 |

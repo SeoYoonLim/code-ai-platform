@@ -93,3 +93,5 @@ engine.api  →  engine.services  →  engine.core (interfaces, models, errors)
 - [ ] 수정 금지 구역 변경 없음 (`git diff --stat`으로 확인)
 - [ ] 파일당 300줄 이하
 - [ ] 작업 카드 하단 `## 결과`에 변경 파일 목록과 남은 이슈 기록
+- [ ] **새로 쓴 스크립트·Dockerfile·compose·CI 설정은 실제로 한 번 실행**해서 결과(명령, 종료 코드, 핵심 출력)를 `## 결과`에 적었다. 실행하지 않았으면 "미실행"이라고 명시한다 (S-01에서 한 번도 실행하지 않은 Dockerfile·스크립트가 버그를 5건 이상 냈다)
+- [ ] 외부 도구의 **동작을 가정하지 않았다**: 플래그·API·기본값은 도움말이나 실측으로 확인한 것만 쓴다 (예: `--lora-init-without-apply`는 도움말과 달리 어댑터를 꺼 두지 않았고, Ollama `num_gpu` 생략은 장치를 고착시켰다)
