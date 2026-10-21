@@ -1,6 +1,8 @@
 """Environment configuration for llama-server."""
 
-from pydantic import AnyHttpUrl, SecretStr
+from typing import Literal
+
+from pydantic import AnyHttpUrl, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -9,3 +11,12 @@ class Settings(BaseSettings):
     llamacpp_url: AnyHttpUrl = AnyHttpUrl("http://localhost:8080")
     base_model: str = "qwen2.5-coder-3b-instruct-q4_k_m"
     llamacpp_api_key: SecretStr | None = None
+    embed_url: AnyHttpUrl = AnyHttpUrl("http://localhost:11434")
+    embed_model: str = "nomic-embed-text"
+    embed_dimension: int = Field(default=768, gt=0)
+    embed_batch_size: int = Field(default=32, gt=0)
+    embed_device_policy: Literal["dynamic", "gpu", "cpu"] = "dynamic"
+    embed_idle_grace_s: float = Field(default=3.0, ge=0)
+    embed_min_dwell_s: float = Field(default=10.0, ge=0)
+    embed_doc_prefix: str = "search_document: "
+    embed_query_prefix: str = "search_query: "
