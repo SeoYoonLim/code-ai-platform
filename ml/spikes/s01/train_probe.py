@@ -29,10 +29,13 @@ def run(args: argparse.Namespace, result: dict) -> None:
         result["allocated_gb"] = torch.cuda.max_memory_allocated() / 1e9
         from vram_monitor import gpu_mib
 
-        if reserved >= guard["max_vram_reserved_gb"] or gpu_mib() * 2**20 / 1e9 > guard.get("max_system_vram_gb", 7.6):
+        limit_reserved = guard["max_vram_reserved_gb"]
+        limit_system = guard.get("max_system_vram_gb", 7.6)
+        system_gb = gpu_mib() * 2**20 / 1e9
+        if reserved >= limit_reserved or system_gb > limit_system:
             result["exceeded"] = True
             raise RuntimeError(
-                f"VRAM guard exceeded (reserved >= {guard['max_vram_reserved_gb']} GB or device > {guard.get('max_system_vram_gb', 7.6)} GB)"
+                f"VRAM guard exceeded (reserved >= {limit_reserved} GB or device > {limit_system} GB)"
             )
 
     class Guard(TrainerCallback):
