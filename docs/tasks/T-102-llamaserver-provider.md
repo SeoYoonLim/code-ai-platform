@@ -2,7 +2,7 @@
 
 - **담당:** Codex
 - **작성:** Claude · 2026-10-21
-- **상태:** ready (T-101 머지 후 착수 — 적합성 스위트를 상속해야 한다)
+- **상태:** ready (T-101 머지 완료 `9056840`)
 - **우선순위:** P0 — ADR-0003의 핵심 구현. 이후 분석·리팩터링·채팅(M2) 전부 이 위에서 동작한다
 - **관련 문서:** [ADR-0003](../adr/0003-base-model-and-lora-serving.md), [S-01 REPORT](../../ml/spikes/s01/results/REPORT.md), 인터페이스 [llm.py](../../services/ai-engine/src/engine/core/interfaces/llm.py) · [activity.py](../../services/ai-engine/src/engine/core/interfaces/activity.py), 에러 [errors.py](../../services/ai-engine/src/engine/core/errors.py)
 
@@ -15,11 +15,43 @@
 |---|---|
 | `services/ai-engine/src/engine/adapters/llm/llamacpp.py` | `LlamaServerProvider` (300줄 초과 시 `llamacpp_wire.py` 등으로 분리) |
 | `services/ai-engine/tests/unit/adapters/llm/test_llamacpp.py` | respx 기반 단위 테스트 + `LLMProviderConformance` 상속 |
+| `services/ai-engine/tests/integration/__init__.py` | (비어 있음 — 패키지 규약) |
 | `services/ai-engine/tests/integration/test_llamacpp_live.py` | 실제 서버 대상 (`@pytest.mark.integration`) |
 | `docker-compose.yml` | `llama-server` 서비스 추가 (기존 `ollama` 서비스는 임베딩 전용으로 유지) |
 | `infra/llama/entrypoint.sh` | `/adapters/*.gguf`를 스캔해 `--lora` 인자를 만들어 `llama-server` 실행 |
 | `scripts/fetch_base_model.py` | base GGUF 다운로드 + sha256 검증 (`.data/models/`) |
 | `.env.example` | 이미 `ENGINE_LLAMACPP_URL` 추가됨 — 필요한 변수만 보강 |
+
+## T-101 스위트 상속 규약 (확정 — 병합된 스위트를 읽고 정리한 것)
+
+`tests/unit/adapters/llm/test_llamacpp.py`는 이렇게 시작한다 (T-101의 `test_fake_llm.py`와 같은 방식).
+
+```python
+from tests.conformance.llm_suite import LLMProviderConformance
+
+
+class TestLlamaServerProvider(LLMProviderConformance):
+    @pytest.fixture
+    def llm_provider(self, ...) -> LLMProvider:  # fixture 이름은 반드시 llm_provider
+        ...  # respx 로 모킹한 전송 위의 LlamaServerProvider
+```
+
+스위트가 실제 어댑터에 요구하는 것 — **T-101 Fake는 이미 지키고 있어서 카드에 적히지 않았던 조건들**:
+
+1. **모킹 응답은 내용 청크가 2개 이상이어야 한다.** 스위트의 `test_concurrent_streams_are_counted_independently`는 두 스트림이 *첫 청크만 받고 열려 있는* 상태에서 `in_flight == 2`를 단언한다. 응답이 1청크면 그 청크가 곧 마지막이라 이미 `in_flight`가 내려가 있어 실패한다 (Fake 픽스처는 `"one two three"`를 쓴다). respx 목의 SSE 본문에 `delta.content`가 있는 `data:` 라인을 **3개 이상** 넣는다.
+2. **마지막 `TokenChunk`가 소비자에게 전달되는 시점에 `in_flight`는 이미 0이어야 한다** (`test_stream_completion_restores_activity`, 58~59줄). 실제 SSE는 `finish_reason` 청크 뒤에 `usage` 전용 청크(`choices: []`)가 따로 온다. 그래서 `finish_reason`·`usage`를 모아 **마지막 `TokenChunk`를 만들고, 그것을 `yield`하기 직전에** `in_flight`를 감소시킨다. `[DONE]`을 기다렸다가 내리면 이 테스트가 실패한다.
+3. **`stream()`은 `async def` + `yield`인 진짜 async generator여야 한다.** 스위트가 `isinstance(stream, AsyncGenerator)`를 단언하고 `aclose()`를 호출한다. 커스텀 이터레이터 클래스나 `httpx` 응답을 그대로 반환하면 실패한다.
+4. **스위트는 빈 `messages=()`로 호출한다.** 실서버가 거절할 입력이므로 **스위트는 모킹된 전송(respx)에서만** 돌린다. 실서버 대상 검증은 `tests/integration/test_llamacpp_live.py`에서 별도 시나리오로 한다 (스위트를 실서버에 붙이지 않는다).
+5. 스위트가 요구하는 어댑터 이름은 `"__missing__"` 뿐이다 — 이 이름이 `/lora-adapters` 목록에 **없다**고 모킹하면 `AdapterNotFound`가 요청 전송 전에 나야 한다. 캐시 갱신을 위한 `GET /lora-adapters` 호출 1회는 허용된다.
+6. `in_flight` 관련 규칙 5개(완료·중단 `aclose()`·예외·동시성·generate 복귀)는 T-103 임베딩 스케줄링이 직접 의존한다. 하나라도 건너뛰거나 `xfail` 처리하지 않는다.
+
+**테스트 패키지 규약 (T-101과 동일, 재현·검증됨):**
+- 새 테스트 디렉터리에는 `__init__.py`를 둔다. 이 카드에서는 **`services/ai-engine/tests/integration/__init__.py`** 가 필요하다 (현재 `.gitkeep`만 있다). `tests/unit/adapters/llm/`의 `__init__.py` 체인은 T-101이 이미 만들었다.
+- 테스트 파일 이름은 저장소 전체에서 고유해야 한다: `test_llamacpp.py`, `test_llamacpp_live.py`. 이미 있는 이름(`test_fake_llm.py` 등)을 재사용하지 않는다.
+- 스위트는 `from tests.conformance.llm_suite import ...`로만 가져온다. `sys.path` 조작·상대 임포트 금지.
+
+## 커밋 규칙 (중요)
+Codex 샌드박스는 `.git`에 쓸 수 없어서 `git add`/`git commit`이 `index.lock` 권한 오류로 실패한다 (T-001·S-01·T-101에서 확인). **커밋하지 않는다.** 변경은 작업 트리에 두고 "결과"에 변경 파일과 검증 출력을 남기면 Claude가 리뷰 후 커밋·push한다.
 
 ## 구현 명세
 

@@ -2,7 +2,7 @@
 
 - **담당:** Codex
 - **작성:** Claude · 2026-10-21
-- **상태:** **done** (2026-10-21, 리뷰 완료)
+- **상태:** **done** (2026-10-21, PR #3 머지 `9056840`)
 - **우선순위:** P0 — M1의 모든 서비스 테스트가 이 Fake 위에서 돈다. 가장 먼저 한다 (GPU·네트워크 불필요)
 - **관련 문서:** [AGENTS.md](../../AGENTS.md), [CLAUDE.md](../../CLAUDE.md), 인터페이스 [llm.py](../../services/ai-engine/src/engine/core/interfaces/llm.py) · [embedder.py](../../services/ai-engine/src/engine/core/interfaces/embedder.py) · [vector_store.py](../../services/ai-engine/src/engine/core/interfaces/vector_store.py) · [activity.py](../../services/ai-engine/src/engine/core/interfaces/activity.py)
 
