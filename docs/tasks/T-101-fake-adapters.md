@@ -20,8 +20,12 @@
 | `services/ai-engine/tests/conformance/llm_suite.py` | `LLMProviderConformance` (테스트 믹스인 클래스) |
 | `services/ai-engine/tests/conformance/embedder_suite.py` | `EmbedderConformance` |
 | `services/ai-engine/tests/conformance/vector_store_suite.py` | `VectorStoreConformance` |
-| `services/ai-engine/tests/unit/adapters/llm/test_fake.py` 외 2개 | 각 Fake가 스위트를 상속해 통과 |
+| `services/ai-engine/tests/unit/adapters/llm/test_fake_llm.py` | `FakeLLMProvider`가 스위트를 상속해 통과 + Fake 고유 동작 |
+| `services/ai-engine/tests/unit/adapters/embeddings/test_fake_embedder.py` | `FakeEmbedder` 〃 |
+| `services/ai-engine/tests/unit/adapters/vectorstore/test_in_memory_store.py` | `InMemoryVectorStore` 〃 |
+| `services/ai-engine/tests/unit/adapters/test_fakes_together.py` | Fake 3종 통합 smoke (아래 수락 기준) |
 | `services/ai-engine/tests/conftest.py` | 공용 fixture (`fake_llm`, `fake_embedder`, `in_memory_store`, 샘플 `CodeChunk` 팩토리) |
+| 새로 만드는 **모든** 테스트 디렉터리의 `__init__.py` | `tests/unit/adapters/`, `…/llm/`, `…/embeddings/`, `…/vectorstore/`, `tests/conformance/` (아래 "테스트 패키지 규약" 참조) |
 
 > 스위트 파일 이름은 `*_suite.py`다 (`test_*.py`가 아니므로 pytest가 단독 수집하지 않는다). 사용 방법은 아래 "스위트 사용 규약" 참조.
 
@@ -54,11 +58,21 @@
   - `delete_by_paths`는 삭제 개수를 반환. `get_file_hashes`는 `{path: content_hash}` — 같은 파일의 청크들은 같은 `content_hash`를 가진다는 가정.
 - 동시성: 단일 이벤트 루프 가정, 락 불필요. 단 `query` 도중 `upsert`로 딕셔너리가 바뀌어도 터지지 않게 스냅샷 위에서 순회한다.
 
+### 테스트 패키지 규약 (중요 — 재현·검증된 함정)
+이 저장소는 pytest 기본 `prepend` 임포트 모드를 쓴다. 다음을 **반드시** 지킨다.
+- 새로 만드는 모든 테스트 디렉터리에 `__init__.py`를 둔다 (기존 `tests/__init__.py`, `tests/unit/__init__.py`와 같은 방식).
+- **테스트 파일 이름은 저장소 전체에서 고유**해야 한다. 서로 다른 폴더에 `test_fake.py`를 여러 개 두면 `import file mismatch`로 수집이 실패한다 (재현 확인함). 위 표의 이름을 그대로 쓴다.
+- 스위트는 패키지 경로로 임포트한다: `from tests.conformance.llm_suite import LLMProviderConformance`. `sys.path` 조작·상대 임포트로 우회하지 않는다 (상대 임포트는 ruff `TID`로도 금지).
+- 스위트 모듈(`*_suite.py`)은 `test_*.py`가 아니므로 pytest가 단독 수집하지 않는다.
+
 ### 스위트 사용 규약 (중요)
 각 스위트는 **`pytest` 수집 대상이 아닌 믹스인**이다. 구현 테스트가 이렇게 상속한다:
 
 ```python
-# tests/unit/adapters/vectorstore/test_in_memory.py
+# tests/unit/adapters/vectorstore/test_in_memory_store.py
+from tests.conformance.vector_store_suite import VectorStoreConformance
+
+
 class TestInMemoryVectorStore(VectorStoreConformance):
     @pytest.fixture
     def store(self) -> VectorStore:  # 스위트가 요구하는 fixture 이름
@@ -89,6 +103,10 @@ class TestInMemoryVectorStore(VectorStoreConformance):
 - 도메인 모델: `engine.core.models` (`CodeChunk`, `GenerationRequest`, `GenerationResult`, `TokenChunk`, `TokenUsage`, `ProviderHealth`, `MetadataFilter`, `RetrievedChunk`)
 - `pytest-asyncio`는 `asyncio_mode = "auto"` — `async def test_...`를 그대로 쓴다.
 - 이 카드 이후 T-102/T-103/T-104는 "스위트를 상속해 통과시키기"가 수락 기준의 첫 줄이 된다.
+
+## 커밋 규칙 (중요)
+Codex 샌드박스는 `.git`에 쓸 수 없어서 `git add`/`git commit`이 `index.lock` 권한 오류로 실패한다 (T-001·S-01에서 두 번 확인). **커밋하지 않는다.**
+변경은 작업 트리에 그대로 두고, 아래 "결과"에 변경 파일 목록과 검증 출력을 남긴다. 리뷰 후 Claude가 커밋·push한다.
 
 ## 결과
 <Codex 기록: 변경 파일, 스위트별 테스트 수, `make check` 결과>
