@@ -27,9 +27,13 @@
 ```python
 # 자동 생성 — 수정 금지 (scripts/gen_error_catalog.py)
 from typing import Final, TypedDict
+
+
 class CatalogEntry(TypedDict):
     status: int
     retryable: bool
+
+
 ENGINE_ERROR_CATALOG: Final[dict[str, CatalogEntry]] = {...}
 BACKEND_ERROR_CATALOG: Final[dict[str, CatalogEntry]] = {...}
 ```

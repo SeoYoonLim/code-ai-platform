@@ -63,7 +63,7 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
-testpaths = ["packages/py-common/tests", "services/backend/tests", "services/ai-engine/tests"]
+testpaths = ["packages/py-common/tests", "services/backend/tests", "services/ai-engine/tests", "scripts/tests"]
 markers = [
     "integration: 실제 Ollama/Chroma/Redis가 필요한 테스트 (기본 실행 제외)",
     "gpu: GPU가 필요한 테스트",

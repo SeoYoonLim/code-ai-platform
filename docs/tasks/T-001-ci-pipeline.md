@@ -105,4 +105,54 @@ lint-size: ## 파일당 300줄 규칙 검사 (생성물 제외)
 - Dart 검증은 `dart:3.5` 이미지를 쓰며, 첫 pull에 1~2분이 걸린다
 
 ## 결과
-<Codex 기록>
+상태: 구현 완료, 검증 일부 BLOCKED (기존 포맷 오류 및 Git 메타데이터 쓰기 제한).
+
+변경 파일:
+- `.github/workflows/ci.yml`: python/contracts job, 15분 timeout, SHA 고정 액션,
+  uv 0.12.17/Python 3.12/Node 22, tracked 및 untracked 생성물 drift 검사.
+- `.github/pull_request_template.md`: 작업 카드 및 DoD 체크리스트.
+- `scripts/check_file_lines.py`: 추적 소스의 300줄 검사, 생성물 제외, Git 조회 실패 시 순회.
+- `scripts/tests/test_check_file_lines.py`: 경계/실패/제외/옵션/경로/untracked/fallback 15개 테스트.
+- `Makefile`: lint-size 타겟과 lint/.PHONY 의존 목록만 추가.
+- `pyproject.toml`: testpaths 한 줄에 scripts/tests 추가.
+- 이 작업 카드: 결과 기록.
+
+로컬 검사 (Windows, uv 0.12.17, 기존 환경 Python 3.14.7):
+- 사용자 캐시 쓰기가 거부되어 UV_CACHE_DIR을 worktree의 .uv-cache로 지정.
+- `uv run ruff check .`: All checks passed!
+- `uv run ruff format --check .`: exit 1, 기존
+  `docs/tasks/T-003-py-common-runtime.md:30` 코드 블록 포맷 오류 (수정 대상 밖).
+- `uv run lint-imports`: Contracts: 5 kept, 0 broken.
+- `uv run mypy packages/py-common/src services/ai-engine/src services/backend/src`:
+  Success: no issues found in 64 source files.
+- `uv run mypy --strict scripts/check_file_lines.py`: no issues found in 1 source file.
+- 두 OpenAPI 스펙의 `uv run openapi-spec-validator`: 모두 OK.
+- `uv run pytest --cov=engine --cov=backend --cov=py_common --cov-report=term-missing`:
+  59 passed, 1 warning, coverage 99%. pytest cache 쓰기 경고와 backend 미import coverage 경고.
+- `uv run python scripts/check_file_lines.py --max 300`: exit 0.
+- make 미설치로 make check의 레시피를 직접 실행. 포맷 실패로 전체 통과는 BLOCKED.
+
+의도적 실패 검사 (모든 임시 변경 제거):
+- 금지 구역을 유지하도록 격리 임시 Git 저장소에 backend 계약/생성물을 복사.
+  schema에 ci_probe 필드 추가 후 Makefile과 같은 옵션으로 Python 생성물을 재생성.
+  ci.yml의 drift shell을 그대로 실행하여 exit 1 확인. 원본 생성물 복구 시 exit 0.
+- 같은 격리 저장소의 생성물 경로에 untracked 파일 추가: drift shell exit 1.
+- 격리 Git 저장소에 301줄 ci_line_probe.py를 stage: 검사기 exit 1,
+  출력 `ci_line_probe.py:301`.
+- engine.core에 임시 ci_import_probe.py (`import httpx`) 추가:
+  `uv run lint-imports --no-cache` exit 1, framework-free BROKEN.
+  파일 제거 후 동일 명령 exit 0, 5 kept / 0 broken.
+
+액션 SHA는 git ls-remote로 v4.2.2(checkout), v6.0.1(setup-uv), v4.4.0(setup-node)
+태그를 조회하여 확인. 기본 schannel 오류로 해당 조회에만 http.sslBackend=openssl 사용.
+금지 구역의 최종 변경 없음. 새 Python 파일은 각 300줄 이하.
+
+남은 이슈:
+- BLOCKED: 기존 T-003 문서 포맷 오류를 소유자가 해결해야 python job green 가능.
+- BLOCKED: worktree Git 메타데이터가 C:/project/project1/.git/worktrees 아래에 있어
+  sandbox가 index.lock 생성을 거부. stage/commit 불가, commit SHA 없음. push하지 않음.
+- 요청된 커밋 메시지: `T-001: CI pipeline (GitHub Actions)` + 빈 줄 +
+  `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
+- CI 링크: PR push 후 추가 예정. 두 job의 실제 green/15분 이내 실행은 미확인.
+- 로컬 전체 TS/Dart 재생성/컴파일은 미실행; PR의 contracts job에서 검증 필요.
+- 첫 green 이후 main 보호 규칙 설정은 사람 후속 작업.

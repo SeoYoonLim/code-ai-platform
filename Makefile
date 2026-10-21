@@ -10,7 +10,7 @@ WEB_GEN      := apps/web/src/lib/api/schema.d.ts
 DART_GEN_DIR := apps/mobile/packages/api_client
 
 .PHONY: help install up down logs dev dev-engine dev-backend dev-worker dev-web dev-mobile \
-        test test-unit test-integration test-web test-mobile lint lint-py lint-imports \
+        test test-unit test-integration test-web test-mobile lint lint-py lint-imports lint-size \
         typecheck format validate-contracts gen-clients gen-py gen-ts gen-dart verify-clients check check-contracts clean gpu-status gpu-train-mode gpu-serve-mode
 
 help: ## 사용 가능한 타겟 목록
@@ -77,7 +77,7 @@ test-mobile: ## Flutter 테스트
 	cd apps/mobile && flutter test
 
 # --- 품질 --------------------------------------------------------------------
-lint: lint-py lint-imports typecheck ## 모든 Python 정적 검사
+lint: lint-py lint-imports typecheck lint-size ## 모든 Python 정적 검사
 
 lint-py: ## ruff 린트 + 포맷 검사
 	uv run ruff check .
@@ -85,6 +85,9 @@ lint-py: ## ruff 린트 + 포맷 검사
 
 lint-imports: ## 레이어 의존성 계약 검사 (import-linter)
 	uv run lint-imports
+
+lint-size: ## 파일당 300줄 규칙 검사 (생성물 제외)
+	uv run python scripts/check_file_lines.py --max 300
 
 typecheck: ## mypy --strict
 	uv run mypy packages/py-common/src services/ai-engine/src services/backend/src
