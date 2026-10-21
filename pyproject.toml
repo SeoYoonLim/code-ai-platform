@@ -1,0 +1,111 @@
+# uv workspace 루트 (virtual project — 자체 패키지 없음)
+# ml/ 은 CUDA/torch 의존성 격리를 위해 workspace에서 제외한다 (ml/pyproject.toml 별도).
+[project]
+name = "code-ai-platform"
+version = "0.1.0"
+requires-python = ">=3.12"
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = ["packages/py-common", "services/backend", "services/ai-engine"]
+exclude = ["ml"]
+
+[tool.uv.sources]
+py-common = { workspace = true }
+
+[dependency-groups]
+dev = [
+    "ruff>=0.7",
+    "mypy>=1.13",
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "pytest-cov>=6.0",
+    "respx>=0.21",
+    "import-linter>=2.1",
+    "datamodel-code-generator[http]>=0.26",
+    "openapi-spec-validator>=0.7",
+    "jsonschema>=4.23",
+    "pyyaml>=6.0",
+]
+
+# --- Ruff -------------------------------------------------------------------
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+extend-exclude = ["**/generated/**"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "A", "C4", "SIM", "RUF", "ASYNC", "PT", "TID"]
+ignore = ["RUF001", "RUF002", "RUF003", "N818"] # 한글 주석/docstring 허용, 도메인 예외명 유지
+
+[tool.ruff.lint.isort]
+known-first-party = ["engine", "backend", "py_common"]
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+# --- Mypy -------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unreachable = true
+mypy_path = ["packages/py-common/src", "services/backend/src", "services/ai-engine/src"]
+explicit_package_bases = true
+exclude = ["/generated/"]
+
+[[tool.mypy.overrides]]
+module = ["chromadb.*", "tree_sitter_language_pack.*", "arq.*"]
+ignore_missing_imports = true
+
+# --- Pytest -----------------------------------------------------------------
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["packages/py-common/tests", "services/backend/tests", "services/ai-engine/tests"]
+markers = [
+    "integration: 실제 Ollama/Chroma/Redis가 필요한 테스트 (기본 실행 제외)",
+    "gpu: GPU가 필요한 테스트",
+]
+addopts = "-m 'not integration and not gpu' --strict-markers"
+
+# --- Import Linter: 의존성 방향 강제 --------------------------------------------
+[tool.importlinter]
+root_packages = ["engine", "backend", "py_common"]
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "engine layers: api -> services -> core"
+type = "layers"
+layers = ["engine.api", "engine.services", "engine.core"]
+
+[[tool.importlinter.contracts]]
+name = "engine.core is framework-free"
+type = "forbidden"
+source_modules = ["engine.core"]
+forbidden_modules = [
+    "engine.adapters", "engine.services", "engine.api",
+    "fastapi", "httpx", "chromadb", "langchain_core", "pydantic",
+]
+
+[[tool.importlinter.contracts]]
+name = "engine services/api must not import adapters (DI in engine.main)"
+type = "forbidden"
+source_modules = ["engine.services", "engine.api"]
+forbidden_modules = ["engine.adapters"]
+
+[[tool.importlinter.contracts]]
+name = "engine adapters are independent"
+type = "independence"
+modules = [
+    "engine.adapters.llm",
+    "engine.adapters.embeddings",
+    "engine.adapters.vectorstore",
+    "engine.adapters.parsing",
+]
+
+[[tool.importlinter.contracts]]
+name = "backend and engine are independent (HTTP contract only)"
+type = "independence"
+modules = ["backend", "engine"]

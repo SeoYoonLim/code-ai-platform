@@ -1,0 +1,15 @@
+{
+  "notification": { "title": "색인 실패 · my-app", "body": "engine_unavailable" },
+  "data": {
+    "schema_version": "1",
+    "type": "index.failed",
+    "event_id": "0b9c3c3e-8a5e-4c2d-b2b8-0c1d2e3f4a5b",
+    "project_id": "prj_01",
+    "job_id": "job_78",
+    "occurred_at": "2026-10-21T09:31:00Z",
+    "deep_link": "codeai://projects/prj_01/jobs/job_78",
+    "error_code": "engine_unavailable"
+  },
+  "android": { "priority": "high", "collapse_key": "job_78", "ttl": "86400s" },
+  "apns": { "headers": { "apns-priority": "10", "apns-collapse-id": "job_78" } }
+}

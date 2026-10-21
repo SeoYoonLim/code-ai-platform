@@ -1,0 +1,26 @@
+# 파인튜닝 파이프라인 전용 환경 (uv workspace 미포함).
+# CUDA/torch 버전이 GPU 머신마다 다르므로 서비스 환경과 격리한다.
+# 실행: cd ml && uv sync --extra train && uv run python -m training.train_lora --config training/configs/<name>.yaml
+[project]
+name = "code-ai-ml"
+version = "0.1.0"
+requires-python = ">=3.11,<3.13"
+dependencies = [
+    "datasets>=3.0",
+    "pyyaml>=6.0",
+    "datasketch>=1.6",   # MinHash 중복 제거
+    "detect-secrets>=1.5",
+]
+
+[project.optional-dependencies]
+train = [
+    "torch>=2.4",
+    "transformers>=4.46",
+    "peft>=0.13",
+    "trl>=0.12",
+    "unsloth",
+]
+eval = ["evaluate>=0.4"]
+
+[tool.uv]
+package = false

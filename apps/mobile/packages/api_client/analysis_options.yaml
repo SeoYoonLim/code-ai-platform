@@ -1,0 +1,7 @@
+# 생성 코드 전용 (openapi-generator dart-dio). .openapi-generator-ignore 에 등록되어 재생성 시 보존된다.
+analyzer:
+  exclude:
+    - test/**   # 생성기가 만드는 빈 테스트 스텁
+  errors:
+    unused_import: ignore
+    duplicate_import: ignore

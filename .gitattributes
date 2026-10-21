@@ -1,0 +1,10 @@
+* text=auto eol=lf
+*.bat text eol=crlf
+*.png binary
+*.jpg binary
+*.gguf binary
+*.safetensors binary
+# 생성물: diff 축약
+packages/py-common/src/py_common/generated/** linguist-generated=true
+apps/web/src/lib/api/schema.d.ts linguist-generated=true
+apps/mobile/packages/api_client/** linguist-generated=true

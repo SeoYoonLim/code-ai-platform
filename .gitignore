@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+
+# Env / secrets
+.env
+*.pem
+**/firebase-*.json
+
+# Data & models (대용량 — 별도 스토리지 사용)
+.data/
+ml/datasets/raw/*
+ml/datasets/processed/*
+ml/datasets/splits/*
+!ml/datasets/**/.gitkeep
+ml/outputs/
+*.safetensors
+*.gguf
+*.bin
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+
+# Flutter
+**/.dart_tool/
+apps/mobile/**/build/
+**/*.g.dart.tmp
+
+# IDE / OS
+.idea/
+.vscode/*
+!.vscode/settings.json
+.DS_Store
+Thumbs.db

@@ -1,0 +1,18 @@
+{
+  "notification": { "title": "색인 완료", "body": "x" },
+  "data": {
+    "schema_version": "1",
+    "type": "index.completed",
+    "event_id": "6f1c2a0e-3b7d-4f0a-9a43-2f6f1d0c9b11",
+    "project_id": "prj_01",
+    "job_id": "job_77",
+    "occurred_at": "2026-10-21T09:30:00Z",
+    "deep_link": "codeai://projects/prj_01",
+    "commit_sha": "a1b2c3d",
+    "files_changed": "2",
+    "chunk_count": "40",
+    "error_code": "internal_error"
+  },
+  "android": { "priority": "normal", "collapse_key": "job_77", "ttl": "86400s" },
+  "apns": { "headers": { "apns-priority": "5", "apns-collapse-id": "job_77" } }
+}

@@ -1,0 +1,1185 @@
+openapi: 3.1.0
+info:
+  title: Code AI Platform — Backend API (public)
+  version: 1.0.0
+  description: |
+    Web(Next.js) / Mobile(Flutter) ↔ Backend 공개 API.
+    ★ 단일 진실 원천(SSOT). 변경은 Claude만 수행하며, 변경 후 `make gen-clients`로 TS/Dart/Python 모델을 재생성한다.
+    공통 규약은 docs/architecture/03-api-conventions.md 를 따른다.
+
+    - 에러: RFC 9457 (RFC 7807 호환) `application/problem+json`, `code`는 `ErrorCode`.
+    - 페이지네이션: 변하는 목록(프로젝트·잡·분석·채팅)은 **cursor**, 고정된 결과 집합(분석의 Finding)은 **offset**.
+    - 스트리밍: 채팅은 SSE. Backend는 이벤트를 5분간 버퍼링하므로 `Last-Event-ID`로 **재개 가능**.
+    - 비동기 작업: 202 + `Job`. 완료는 FCM 푸시(contracts/events/push.v1.schema.json) 또는 `GET /v1/jobs/{job_id}` 폴링.
+servers:
+  - url: http://localhost:8000
+security:
+  - bearerAuth: []
+
+tags:
+  - name: system
+  - name: projects
+  - name: jobs
+  - name: analyses
+  - name: refactors
+  - name: chat
+  - name: devices
+  - name: webhooks
+
+paths:
+  /v1/health:
+    get:
+      tags: [system]
+      operationId: getHealth
+      security: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HealthResponse" }
+
+  # ---------------------------------------------------------------- projects
+  /v1/projects:
+    get:
+      tags: [projects]
+      operationId: listProjects
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - { name: q, in: query, required: false, description: 이름 부분 일치 검색, schema: { type: string, maxLength: 100 } }
+        - name: sort
+          in: query
+          required: false
+          schema: { type: string, enum: [-created_at, created_at, name, -name], default: -created_at }
+      responses:
+        "200":
+          description: 프로젝트 목록
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProjectPage" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        default: { $ref: "#/components/responses/InternalError" }
+    post:
+      tags: [projects]
+      operationId: createProject
+      description: 저장소를 clone하고 최초 full 색인 잡을 큐에 넣는다. 응답의 index_job으로 진행 상황을 추적한다.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProjectCreate" }
+      responses:
+        "201":
+          description: 생성됨
+          headers:
+            Location: { schema: { type: string }, description: "/v1/projects/{project_id}" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProjectCreated" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        default: { $ref: "#/components/responses/InternalError" }
+
+  /v1/projects/{project_id}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      tags: [projects]
+      operationId: getProject
+      responses:
+        "200":
+          description: 프로젝트
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Project" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        default: { $ref: "#/components/responses/InternalError" }
+    patch:
+      tags: [projects]
+      operationId: updateProject
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProjectUpdate" }
+      responses:
+        "200":
+          description: 수정됨
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Project" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        default: { $ref: "#/components/responses/InternalError" }
+    delete:
+      tags: [projects]
+      operationId: deleteProject
+      description: 프로젝트, 체크아웃, 벡터 컬렉션, 분석 기록을 모두 삭제한다. 실행 중 잡은 취소된다.
+      responses:
+        "204": { description: 삭제됨 }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        default: { $ref: "#/components/responses/InternalError" }
+
+  /v1/projects/{project_id}/reindex:
+    post:
+      tags: [projects]
+      operationId: reindexProject
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ReindexRequest" }
+      responses:
+        "202":
+          description: 색인 잡 큐잉됨
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Job" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        default: { $ref: "#/components/responses/InternalError" }
+
+  # -------------------------------------------------------------------- jobs
+  /v1/jobs:
+    get:
+      tags: [jobs]
+      operationId: listJobs
+      parameters:
+        - { name: project_id, in: query, required: false, schema: { type: string } }
+        - { name: kind, in: query, required: false, schema: { $ref: "#/components/schemas/JobKind" } }
+        - { name: status, in: query, required: false, schema: { $ref: "#/components/schemas/JobStatus" } }
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: 잡 목록 (created_at 내림차순). 모바일 "빌드 알림" 화면의 데이터 소스.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/JobPage" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        default: { $ref: "#/components/responses/InternalError" }
+
+  /v1/jobs/{job_id}:
+    get:
+      tags: [jobs]
+      operationId: getJob
+      parameters:
+        - $ref: "#/components/parameters/JobId"
+      responses:
+        "200":
+          description: 잡 상태
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Job" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        default: { $ref: "#/components/responses/InternalError" }
+
+  /v1/jobs/{job_id}/cancel:
+    post:
+      tags: [jobs]
+      operationId: cancelJob
+      description: 멱등. 이미 종료된 잡은 현재 상태를 그대로 반환한다.
+      parameters:
+        - $ref: "#/components/parameters/JobId"
+      responses:
+        "202":
+          description: 취소 요청됨
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Job" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        default: { $ref: "#/components/responses/InternalError" }
+
+  # ---------------------------------------------------------------- analyses
+  /v1/projects/{project_id}/analyses:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      tags: [analyses]
+      operationId: listAnalyses
+      parameters:
+        - { name: status, in: query, required: false, schema: { $ref: "#/components/schemas/JobStatus" } }
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: 분석 목록 (created_at 내림차순, findings 미포함)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AnalysisPage" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        default: { $ref: "#/components/responses/InternalError" }
+    post:
+      tags: [analyses]
+      operationId: createAnalysis
+      description: 분석 잡을 큐에 넣는다. 색인이 끝나지 않은 프로젝트는 409 index_not_ready.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AnalysisCreate" }
+      responses:
+        "202":
+          description: 분석 잡 큐잉됨. 완료 시 push analysis.completed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Analysis" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        default: { $ref: "#/components/responses/InternalError" }
+
+  /v1/analyses/{analysis_id}:
+    get:
+      tags: [analyses]
+      operationId: getAnalysis
+      parameters:
+        - $ref: "#/components/parameters/AnalysisId"
+      responses:
+        "200":
+          description: 분석 상세 (finding_counts 포함, Finding 본문은 /findings)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Analysis" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        default: { $ref: "#/components/responses/InternalError" }
+
+  /v1/analyses/{analysis_id}/findings:
+    get:
+      tags: [analyses]
+      operationId: listFindings
+      description: 완료된 분석의 고정 결과 집합이므로 offset 페이지네이션 (페이지 점프, 총 개수 표시).
+      parameters:
+        - $ref: "#/components/parameters/AnalysisId"
+        - $ref: "#/components/parameters/Offset"
+        - $ref: "#/components/parameters/Limit"
+        - name: severity
+          in: query
+          required: false
+          style: form
+          explode: false
+          description: "쉼표 구분 다중 선택 (예 major,critical)"
+          schema: { type: array, items: { $ref: "#/components/schemas/Severity" } }
+        - name: category
+          in: query
+          required: false
+          style: form
+          explode: false
+          schema: { type: array, items: { $ref: "#/components/schemas/FindingCategory" } }
+        - { name: path, in: query, required: false, description: 경로 prefix 필터, schema: { type: string } }
+        - name: sort
+          in: query
+          required: false
+          schema: { type: string, enum: [-severity, path], default: -severity }
+      responses:
+        "200":
+          description: Finding 목록
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FindingPage" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        default: { $ref: "#/components/responses/InternalError" }
+
+  /v1/analyses/{analysis_id}/findings/{finding_id}/feedback:
+    put:
+      tags: [analyses]
+      operationId: submitFindingFeedback
+      description: 수락/거절/수정 피드백 (사용자당 1개, 덮어쓰기). 파인튜닝 데이터셋으로 재활용된다 (data-flow §5).
+      parameters:
+        - $ref: "#/components/parameters/AnalysisId"
+        - $ref: "#/components/parameters/FindingId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/FindingFeedback" }
+      responses:
+        "200":
+          description: 저장됨
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Finding" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        default: { $ref: "#/components/responses/InternalError" }
+
+  /v1/analyses/{analysis_id}/findings/{finding_id}/refactor:
+    post:
+      tags: [refactors]
+      operationId: refactorFinding
+      description: Finding을 근거로 리팩터링 패치 생성 잡을 큐에 넣는다.
+      parameters:
+        - $ref: "#/components/parameters/AnalysisId"
+        - $ref: "#/components/parameters/FindingId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                instruction: { type: [string, "null"], maxLength: 4000, description: 추가 지시 (없으면 Finding.suggestion 사용) }
+      responses:
+        "202":
+          description: 리팩터링 잡 큐잉됨
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Refactor" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        default: { $ref: "#/components/responses/InternalError" }
+
+  # --------------------------------------------------------------- refactors
+  /v1/projects/{project_id}/refactors:
+    post:
+      tags: [refactors]
+      operationId: createRefactor
+      description: 자유 지시 기반 리팩터링 (Finding 없이).
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RefactorCreate" }
+      responses:
+        "202":
+          description: 리팩터링 잡 큐잉됨
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Refactor" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        default: { $ref: "#/components/responses/InternalError" }
+
+  /v1/refactors/{refactor_id}:
+    get:
+      tags: [refactors]
+      operationId: getRefactor
+      parameters:
+        - { name: refactor_id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: 리팩터링 결과 (완료 시 diff, validation 포함)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Refactor" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        default: { $ref: "#/components/responses/InternalError" }
+
+  # -------------------------------------------------------------------- chat
+  /v1/projects/{project_id}/chat/sessions:
+    get:
+      tags: [chat]
+      operationId: listChatSessions
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: 채팅 세션 목록 (updated_at 내림차순)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ChatSessionPage" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        default: { $ref: "#/components/responses/InternalError" }
+
+  /v1/chat/sessions/{session_id}/messages:
+    get:
+      tags: [chat]
+      operationId: listChatMessages
+      parameters:
+        - { name: session_id, in: path, required: true, schema: { type: string } }
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: 메시지 목록 (created_at 내림차순 — 무한 스크롤 위로 로드)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ChatMessagePage" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        default: { $ref: "#/components/responses/InternalError" }
+
+  /v1/projects/{project_id}/chat/messages:
+    post:
+      tags: [chat]
+      operationId: sendChatMessage
+      description: |
+        RAG 기반 코드 대화. 응답은 SSE. 이벤트 순서: `meta` → `sources` → `token`* → (`done` | `error`).
+        연결이 끊기면 `meta.message_id`로 `GET /v1/chat/messages/{message_id}/stream`에 재연결한다.
+      x-sse: { policy: "#/components/x-sse-policy" }
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ChatMessageCreate" }
+      responses:
+        "200":
+          description: SSE 스트림 (ChatStreamEvent)
+          headers:
+            Cache-Control: { schema: { type: string, const: no-cache } }
+            X-Accel-Buffering: { schema: { type: string, const: "no" } }
+          content:
+            text/event-stream:
+              schema: { $ref: "#/components/schemas/ChatStreamEvent" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+        default: { $ref: "#/components/responses/InternalError" }
+
+  /v1/chat/messages/{message_id}/stream:
+    get:
+      tags: [chat]
+      operationId: resumeChatStream
+      description: |
+        끊긴 스트림 재개. `Last-Event-ID` 이후 이벤트를 버퍼에서 재전송한 뒤 실시간 스트림을 이어서 보낸다.
+        이미 완료된 메시지는 버퍼된 나머지 이벤트를 보내고 `done`으로 끝난다. 버퍼(5분)가 만료되면 410 stream_expired
+        (이 경우 GET /v1/chat/sessions/{session_id}/messages 로 최종본 조회).
+      x-sse: { policy: "#/components/x-sse-policy" }
+      parameters:
+        - { name: message_id, in: path, required: true, schema: { type: string } }
+        - name: Last-Event-ID
+          in: header
+          required: false
+          description: "마지막으로 받은 이벤트 id ({stream_id}:{seq}). 생략 시 처음부터."
+          schema: { type: string }
+      responses:
+        "200":
+          description: SSE 스트림 (ChatStreamEvent)
+          content:
+            text/event-stream:
+              schema: { $ref: "#/components/schemas/ChatStreamEvent" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "410": { $ref: "#/components/responses/Gone" }
+        default: { $ref: "#/components/responses/InternalError" }
+
+  # ----------------------------------------------------------------- devices
+  /v1/devices:
+    post:
+      tags: [devices]
+      operationId: registerDevice
+      description: Flutter 앱의 FCM 토큰 등록 (fcm_token 기준 upsert).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DeviceRegister" }
+      responses:
+        "200":
+          description: 등록됨
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Device" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        default: { $ref: "#/components/responses/InternalError" }
+
+  /v1/devices/{device_id}:
+    delete:
+      tags: [devices]
+      operationId: unregisterDevice
+      parameters:
+        - { name: device_id, in: path, required: true, schema: { type: string } }
+      responses:
+        "204": { description: 해제됨 }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        default: { $ref: "#/components/responses/InternalError" }
+
+  # ---------------------------------------------------------------- webhooks
+  /v1/webhooks/github:
+    post:
+      tags: [webhooks]
+      operationId: githubWebhook
+      security: []
+      description: |
+        GitHub 웹훅 수신. 페이로드 스키마와 처리 규칙은 contracts/events/github-webhook.v1.schema.json.
+        1) X-Hub-Signature-256 HMAC 검증 (상수 시간 비교) → 실패 401
+        2) X-GitHub-Delivery 중복 제거 (24h) → 중복이면 202 duplicate
+        3) push + 기본 브랜치 + deleted=false 일 때만 증분 색인 잡 → 202 queued, 그 외 202 ignored
+        GitHub 재전송 폭주를 막기 위해 처리 불가 이벤트도 4xx가 아닌 202 ignored로 응답한다.
+      parameters:
+        - { name: X-GitHub-Event, in: header, required: true, schema: { type: string, examples: [push, ping] } }
+        - { name: X-GitHub-Delivery, in: header, required: true, schema: { type: string, format: uuid } }
+        - { name: X-Hub-Signature-256, in: header, required: true, schema: { type: string, pattern: "^sha256=[0-9a-f]{64}$" } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: GitHub 이벤트 원본. 검증은 events/github-webhook.v1.schema.json 기준.
+      responses:
+        "202":
+          description: 수락됨
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WebhookAck" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        default: { $ref: "#/components/responses/InternalError" }
+
+components:
+  x-sse-policy:
+    retry_ms: 3000
+    keepalive_interval_s: 15
+    first_event_timeout_s: 30
+    idle_timeout_s: 45
+    max_duration_s: 600
+    event_id_format: "{stream_id}:{seq}"
+    resumable: true
+    resume_buffer_ttl_s: 300
+    max_reconnect_attempts: 5   # 클라이언트: retry_ms 기반 지수 백오프 (3s, 6s, 12s, 24s, 30s 상한)
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    ProjectId:
+      name: project_id
+      in: path
+      required: true
+      schema: { type: string, pattern: "^[a-zA-Z0-9_-]{1,64}$" }
+    JobId:
+      name: job_id
+      in: path
+      required: true
+      schema: { type: string }
+    AnalysisId:
+      name: analysis_id
+      in: path
+      required: true
+      schema: { type: string }
+    FindingId:
+      name: finding_id
+      in: path
+      required: true
+      schema: { type: string }
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      description: 이전 응답의 page.next_cursor (opaque, base64url). 생략 시 첫 페이지. 정렬/필터를 바꾸면 무효.
+      schema: { type: string, maxLength: 512 }
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+    Offset:
+      name: offset
+      in: query
+      required: false
+      schema: { type: integer, minimum: 0, maximum: 10000, default: 0 }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: 24시간 유효. 같은 키 + 같은 본문 → 최초 응답 재반환. 같은 키 + 다른 본문 → 422 idempotency_key_reused.
+      schema: { type: string, minLength: 8, maxLength: 128 }
+
+  headers:
+    RetryAfter:
+      description: 재시도까지 대기할 초
+      schema: { type: integer, minimum: 0 }
+
+  responses:
+    ValidationError:
+      description: 요청 검증 실패 (validation_error, idempotency_key_reused, repo_clone_failed)
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    Unauthorized:
+      description: 인증 실패 (unauthorized, webhook_signature_invalid)
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    NotFound:
+      description: 리소스 없음 (not_found)
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    Conflict:
+      description: 상태 충돌 (conflict, job_conflict, index_not_ready)
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    Gone:
+      description: 스트림 버퍼 만료 (stream_expired)
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    RateLimited:
+      description: 요청 한도 초과 (rate_limited)
+      headers:
+        Retry-After: { $ref: "#/components/headers/RetryAfter" }
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    ServiceUnavailable:
+      description: AI Engine 장애 (engine_unavailable)
+      headers:
+        Retry-After: { $ref: "#/components/headers/RetryAfter" }
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    InternalError:
+      description: 예상하지 못한 오류 (internal_error, engine_error, engine_timeout)
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+
+  schemas:
+    # ------------------------------------------------------------------ errors
+    ErrorCode:
+      type: string
+      description: |
+        Backend 공개 에러 코드. Engine 에러는 그대로 노출하지 않고 아래로 매핑한다
+        (docs/architecture/03-api-conventions.md §1.3 매핑표).
+      enum:
+        - validation_error
+        - unauthorized
+        - forbidden
+        - not_found
+        - conflict
+        - job_conflict
+        - index_not_ready
+        - idempotency_key_reused
+        - repo_clone_failed
+        - context_too_large
+        - stream_expired
+        - rate_limited
+        - webhook_signature_invalid
+        - internal_error
+        - engine_error
+        - engine_unavailable
+        - engine_timeout
+      x-error-catalog:
+        validation_error:          { status: 422, retryable: false }
+        unauthorized:              { status: 401, retryable: false }
+        forbidden:                 { status: 403, retryable: false }
+        not_found:                 { status: 404, retryable: false }
+        conflict:                  { status: 409, retryable: false }
+        job_conflict:              { status: 409, retryable: false }
+        index_not_ready:           { status: 409, retryable: true }
+        idempotency_key_reused:    { status: 422, retryable: false }
+        repo_clone_failed:         { status: 422, retryable: false }
+        context_too_large:         { status: 413, retryable: false }
+        stream_expired:            { status: 410, retryable: false }
+        rate_limited:              { status: 429, retryable: true }
+        webhook_signature_invalid: { status: 401, retryable: false }
+        internal_error:            { status: 500, retryable: false }
+        engine_error:              { status: 502, retryable: true }
+        engine_unavailable:        { status: 503, retryable: true }
+        engine_timeout:            { status: 504, retryable: true }
+
+    FieldError:
+      type: object
+      required: [loc, msg, type]
+      properties:
+        loc:
+          type: array
+          items: { oneOf: [{ type: string }, { type: integer }] }
+        msg: { type: string }
+        type: { type: string }
+
+    Problem:
+      type: object
+      description: RFC 9457 Problem Details (RFC 7807 호환)
+      required: [type, title, status, code, retryable]
+      properties:
+        type: { type: string, format: uri-reference, description: "/problems/{code}" }
+        title: { type: string }
+        status: { type: integer, minimum: 400, maximum: 599 }
+        detail: { type: string }
+        instance: { type: string, format: uri-reference }
+        code: { $ref: "#/components/schemas/ErrorCode" }
+        retryable: { type: boolean }
+        retry_after_s: { type: [integer, "null"], minimum: 0 }
+        request_id: { type: string }
+        errors:
+          type: array
+          items: { $ref: "#/components/schemas/FieldError" }
+
+    # -------------------------------------------------------------- pagination
+    CursorPageInfo:
+      type: object
+      required: [has_more]
+      properties:
+        next_cursor: { type: [string, "null"] }
+        has_more: { type: boolean }
+
+    OffsetPageInfo:
+      type: object
+      required: [offset, limit, total]
+      properties:
+        offset: { type: integer, minimum: 0 }
+        limit: { type: integer, minimum: 1 }
+        total: { type: integer, minimum: 0 }
+
+    # ------------------------------------------------------------------ system
+    HealthStatus:
+      type: string
+      enum: [ok, degraded, down]
+
+    HealthResponse:
+      type: object
+      required: [status, version, engine, database, queue]
+      properties:
+        status: { $ref: "#/components/schemas/HealthStatus" }
+        version: { type: string }
+        engine: { $ref: "#/components/schemas/HealthStatus" }
+        database: { $ref: "#/components/schemas/HealthStatus" }
+        queue: { $ref: "#/components/schemas/HealthStatus" }
+
+    # -------------------------------------------------------------------- jobs
+    JobKind:
+      type: string
+      enum: [index, analysis, refactor]
+
+    JobStatus:
+      type: string
+      enum: [queued, running, succeeded, failed, canceled]
+
+    JobProgress:
+      type: object
+      required: [current, total]
+      properties:
+        current: { type: integer, minimum: 0 }
+        total: { type: integer, minimum: 0 }
+        phase: { type: [string, "null"] }
+
+    Job:
+      type: object
+      required: [id, kind, status, project_id, created_at]
+      properties:
+        id: { type: string }
+        kind: { $ref: "#/components/schemas/JobKind" }
+        status: { $ref: "#/components/schemas/JobStatus" }
+        project_id: { type: string }
+        resource_id:
+          type: [string, "null"]
+          description: kind=analysis → analysis_id, kind=refactor → refactor_id, kind=index → null
+        trigger: { type: string, enum: [manual, webhook, project_created], default: manual }
+        progress: { oneOf: [{ $ref: "#/components/schemas/JobProgress" }, { type: "null" }] }
+        error: { oneOf: [{ $ref: "#/components/schemas/Problem" }, { type: "null" }] }
+        created_at: { type: string, format: date-time }
+        started_at: { type: [string, "null"], format: date-time }
+        finished_at: { type: [string, "null"], format: date-time }
+
+    JobPage:
+      type: object
+      required: [items, page]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/Job" } }
+        page: { $ref: "#/components/schemas/CursorPageInfo" }
+
+    # ---------------------------------------------------------------- projects
+    ProjectCreate:
+      type: object
+      required: [name, repo_url]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+        repo_url:
+          type: string
+          description: "https:// git clone URL 또는 개발용 file:// 로컬 경로"
+          pattern: "^(https://|file://)"
+        default_branch: { type: string, default: main, maxLength: 255 }
+        include_globs: { type: array, maxItems: 50, items: { type: string }, default: [] }
+        exclude_globs: { type: array, maxItems: 50, items: { type: string }, default: [] }
+
+    ProjectUpdate:
+      type: object
+      minProperties: 1
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+        default_branch: { type: string, maxLength: 255 }
+        include_globs: { type: array, maxItems: 50, items: { type: string } }
+        exclude_globs: { type: array, maxItems: 50, items: { type: string } }
+
+    IndexState:
+      type: string
+      enum: [not_indexed, indexing, ready, failed]
+
+    Project:
+      type: object
+      required: [id, name, repo_url, default_branch, index_state, created_at, updated_at]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        repo_url: { type: string }
+        default_branch: { type: string }
+        include_globs: { type: array, items: { type: string } }
+        exclude_globs: { type: array, items: { type: string } }
+        index_state: { $ref: "#/components/schemas/IndexState" }
+        last_indexed_commit: { type: [string, "null"] }
+        last_indexed_at: { type: [string, "null"], format: date-time }
+        stats:
+          type: [object, "null"]
+          properties:
+            file_count: { type: integer }
+            chunk_count: { type: integer }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    ProjectCreated:
+      type: object
+      required: [project, index_job]
+      properties:
+        project: { $ref: "#/components/schemas/Project" }
+        index_job: { $ref: "#/components/schemas/Job" }
+
+    ProjectPage:
+      type: object
+      required: [items, page]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/Project" } }
+        page: { $ref: "#/components/schemas/CursorPageInfo" }
+
+    ReindexRequest:
+      type: object
+      properties:
+        mode: { type: string, enum: [incremental, full], default: incremental }
+
+    # ---------------------------------------------------------------- analyses
+    AnalysisCreate:
+      type: object
+      required: [paths]
+      properties:
+        paths:
+          type: array
+          minItems: 1
+          maxItems: 20
+          items: { type: string, minLength: 1 }
+        instruction: { type: [string, "null"], maxLength: 4000 }
+        categories: { type: array, items: { $ref: "#/components/schemas/FindingCategory" }, default: [] }
+
+    Severity:
+      type: string
+      enum: [info, minor, major, critical]
+
+    FindingCategory:
+      type: string
+      enum: [bug, security, performance, maintainability, style]
+
+    FeedbackVerdict:
+      type: string
+      enum: [accepted, rejected, edited]
+
+    Finding:
+      type: object
+      required: [id, category, severity, title, message, path, start_line, end_line]
+      properties:
+        id: { type: string }
+        category: { $ref: "#/components/schemas/FindingCategory" }
+        severity: { $ref: "#/components/schemas/Severity" }
+        title: { type: string }
+        message: { type: string }
+        path: { type: string }
+        start_line: { type: integer, minimum: 1 }
+        end_line: { type: integer, minimum: 1 }
+        suggestion: { type: [string, "null"] }
+        confidence: { type: [number, "null"], minimum: 0, maximum: 1 }
+        feedback: { oneOf: [{ $ref: "#/components/schemas/FeedbackVerdict" }, { type: "null" }] }
+
+    FindingCounts:
+      type: object
+      required: [info, minor, major, critical]
+      properties:
+        info: { type: integer, minimum: 0 }
+        minor: { type: integer, minimum: 0 }
+        major: { type: integer, minimum: 0 }
+        critical: { type: integer, minimum: 0 }
+
+    Analysis:
+      type: object
+      required: [id, project_id, job_id, status, paths, created_at]
+      properties:
+        id: { type: string }
+        project_id: { type: string }
+        job_id: { type: string }
+        status: { $ref: "#/components/schemas/JobStatus" }
+        paths: { type: array, items: { type: string } }
+        instruction: { type: [string, "null"] }
+        commit_sha: { type: [string, "null"] }
+        summary: { type: [string, "null"] }
+        finding_counts: { oneOf: [{ $ref: "#/components/schemas/FindingCounts" }, { type: "null" }] }
+        model: { type: [string, "null"] }
+        adapter: { type: [string, "null"] }
+        error: { oneOf: [{ $ref: "#/components/schemas/Problem" }, { type: "null" }] }
+        created_at: { type: string, format: date-time }
+        completed_at: { type: [string, "null"], format: date-time }
+
+    AnalysisPage:
+      type: object
+      required: [items, page]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/Analysis" } }
+        page: { $ref: "#/components/schemas/CursorPageInfo" }
+
+    FindingPage:
+      type: object
+      required: [items, page]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/Finding" } }
+        page: { $ref: "#/components/schemas/OffsetPageInfo" }
+
+    FindingFeedback:
+      type: object
+      required: [verdict]
+      properties:
+        verdict: { $ref: "#/components/schemas/FeedbackVerdict" }
+        comment: { type: [string, "null"], maxLength: 2000 }
+        edited_suggestion:
+          type: [string, "null"]
+          description: verdict=edited 일 때 필수 (서버 검증)
+
+    # --------------------------------------------------------------- refactors
+    CodeTarget:
+      type: object
+      required: [path]
+      properties:
+        path: { type: string, minLength: 1 }
+        start_line: { type: [integer, "null"], minimum: 1 }
+        end_line: { type: [integer, "null"], minimum: 1 }
+
+    RefactorCreate:
+      type: object
+      required: [target, instruction]
+      properties:
+        target: { $ref: "#/components/schemas/CodeTarget" }
+        instruction: { type: string, minLength: 1, maxLength: 4000 }
+
+    PatchValidation:
+      type: object
+      required: [applies_cleanly, syntax_ok]
+      properties:
+        applies_cleanly: { type: boolean }
+        syntax_ok: { type: boolean }
+        errors: { type: array, items: { type: string } }
+
+    Refactor:
+      type: object
+      required: [id, project_id, job_id, status, target, instruction, created_at]
+      properties:
+        id: { type: string }
+        project_id: { type: string }
+        job_id: { type: string }
+        status: { $ref: "#/components/schemas/JobStatus" }
+        target: { $ref: "#/components/schemas/CodeTarget" }
+        instruction: { type: string }
+        analysis_id: { type: [string, "null"] }
+        finding_id: { type: [string, "null"] }
+        diff: { type: [string, "null"], description: unified diff (완료 시) }
+        explanation: { type: [string, "null"] }
+        validation: { oneOf: [{ $ref: "#/components/schemas/PatchValidation" }, { type: "null" }] }
+        model: { type: [string, "null"] }
+        adapter: { type: [string, "null"] }
+        error: { oneOf: [{ $ref: "#/components/schemas/Problem" }, { type: "null" }] }
+        created_at: { type: string, format: date-time }
+        completed_at: { type: [string, "null"], format: date-time }
+
+    # -------------------------------------------------------------------- chat
+    ChatSession:
+      type: object
+      required: [id, project_id, title, created_at, updated_at]
+      properties:
+        id: { type: string }
+        project_id: { type: string }
+        title: { type: string, description: 첫 질문 앞 50자 }
+        message_count: { type: integer, minimum: 0 }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    ChatSessionPage:
+      type: object
+      required: [items, page]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/ChatSession" } }
+        page: { $ref: "#/components/schemas/CursorPageInfo" }
+
+    ChatSource:
+      type: object
+      required: [path, symbol, start_line, end_line, score]
+      properties:
+        path: { type: string }
+        symbol: { type: string }
+        start_line: { type: integer, minimum: 1 }
+        end_line: { type: integer, minimum: 1 }
+        score: { type: number, minimum: 0, maximum: 1 }
+
+    ChatMessageStatus:
+      type: string
+      enum: [streaming, completed, failed, canceled]
+
+    ChatMessage:
+      type: object
+      required: [id, session_id, role, content, status, created_at]
+      properties:
+        id: { type: string }
+        session_id: { type: string }
+        role: { type: string, enum: [user, assistant] }
+        content: { type: string }
+        status: { $ref: "#/components/schemas/ChatMessageStatus" }
+        sources: { type: array, items: { $ref: "#/components/schemas/ChatSource" } }
+        model: { type: [string, "null"] }
+        created_at: { type: string, format: date-time }
+
+    ChatMessagePage:
+      type: object
+      required: [items, page]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/ChatMessage" } }
+        page: { $ref: "#/components/schemas/CursorPageInfo" }
+
+    ChatMessageCreate:
+      type: object
+      required: [content]
+      properties:
+        session_id: { type: [string, "null"], description: null이면 새 세션 생성 }
+        content: { type: string, minLength: 1, maxLength: 8000 }
+        context_paths: { type: array, maxItems: 20, items: { type: string }, default: [] }
+
+    TokenUsage:
+      type: object
+      required: [prompt_tokens, completion_tokens]
+      properties:
+        prompt_tokens: { type: integer, minimum: 0 }
+        completion_tokens: { type: integer, minimum: 0 }
+
+    ChatMetaEvent:
+      type: object
+      required: [event, stream_id, session_id, message_id, model]
+      properties:
+        event: { type: string, const: meta }
+        stream_id: { type: string }
+        session_id: { type: string }
+        message_id: { type: string, description: assistant 메시지 ID (재연결 키) }
+        model: { type: string }
+        adapter: { type: [string, "null"] }
+
+    ChatSourcesEvent:
+      type: object
+      required: [event, sources]
+      properties:
+        event: { type: string, const: sources }
+        sources: { type: array, items: { $ref: "#/components/schemas/ChatSource" } }
+
+    ChatTokenEvent:
+      type: object
+      required: [event, index, delta]
+      properties:
+        event: { type: string, const: token }
+        index: { type: integer, minimum: 0 }
+        delta: { type: string }
+
+    ChatDoneEvent:
+      type: object
+      required: [event, finish_reason, usage]
+      properties:
+        event: { type: string, const: done }
+        finish_reason: { type: string, enum: [stop, length, error, canceled] }
+        usage: { $ref: "#/components/schemas/TokenUsage" }
+
+    ChatErrorEvent:
+      type: object
+      required: [event, error]
+      properties:
+        event: { type: string, const: error }
+        error: { $ref: "#/components/schemas/Problem" }
+
+    ChatStreamEvent:
+      description: |
+        SSE data 필드의 JSON. wire 형식:
+          id: {stream_id}:{seq}
+          event: {event}
+          data: {ChatStreamEvent JSON}
+      oneOf:
+        - $ref: "#/components/schemas/ChatMetaEvent"
+        - $ref: "#/components/schemas/ChatSourcesEvent"
+        - $ref: "#/components/schemas/ChatTokenEvent"
+        - $ref: "#/components/schemas/ChatDoneEvent"
+        - $ref: "#/components/schemas/ChatErrorEvent"
+      discriminator:
+        propertyName: event
+        mapping:
+          meta: "#/components/schemas/ChatMetaEvent"
+          sources: "#/components/schemas/ChatSourcesEvent"
+          token: "#/components/schemas/ChatTokenEvent"
+          done: "#/components/schemas/ChatDoneEvent"
+          error: "#/components/schemas/ChatErrorEvent"
+
+    # ----------------------------------------------------------------- devices
+    Platform:
+      type: string
+      enum: [android, ios]
+
+    DeviceRegister:
+      type: object
+      required: [fcm_token, platform]
+      properties:
+        fcm_token: { type: string, minLength: 1, maxLength: 4096 }
+        platform: { $ref: "#/components/schemas/Platform" }
+        app_version: { type: [string, "null"] }
+        locale: { type: string, default: ko-KR }
+
+    Device:
+      type: object
+      required: [id, platform, created_at]
+      properties:
+        id: { type: string }
+        platform: { $ref: "#/components/schemas/Platform" }
+        app_version: { type: [string, "null"] }
+        created_at: { type: string, format: date-time }
+
+    # ---------------------------------------------------------------- webhooks
+    WebhookAck:
+      type: object
+      required: [delivery_id, result]
+      properties:
+        delivery_id: { type: string }
+        result: { type: string, enum: [queued, ignored, duplicate] }
+        reason:
+          type: [string, "null"]
+          description: "ignored 사유 (예 non_default_branch, branch_deleted, unsupported_event, unknown_repository)"
+        job_id: { type: [string, "null"] }

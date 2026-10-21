@@ -1,0 +1,151 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.codeai.local/events/push.v1.schema.json",
+  "title": "PushMessage",
+  "description": "Backend → FCM HTTP v1 → Flutter 앱 푸시 메시지 (message 객체에서 token/topic 제외 부분). ★ Claude 소유.\n규칙: FCM data 값은 모두 문자열이어야 하므로 숫자/불리언도 문자열로 인코딩한다 (StringInt, StringBool). 전송 규칙은 contracts/events/README.md 참조.",
+  "type": "object",
+  "required": ["notification", "data", "android", "apns"],
+  "additionalProperties": false,
+  "properties": {
+    "notification": { "$ref": "#/$defs/Notification" },
+    "data": { "$ref": "#/$defs/PushData" },
+    "android": { "$ref": "#/$defs/AndroidConfig" },
+    "apns": { "$ref": "#/$defs/ApnsConfig" }
+  },
+  "$defs": {
+    "StringInt": { "type": "string", "pattern": "^(0|[1-9][0-9]*)$" },
+    "StringBool": { "type": "string", "enum": ["true", "false"] },
+    "Id": { "type": "string", "minLength": 1, "maxLength": 64 },
+
+    "PushEventType": {
+      "type": "string",
+      "enum": [
+        "index.completed",
+        "index.failed",
+        "analysis.completed",
+        "analysis.failed",
+        "refactor.completed",
+        "refactor.failed"
+      ]
+    },
+
+    "Notification": {
+      "type": "object",
+      "description": "OS 알림 영역 표시용. 앱 포그라운드 시 앱이 data로 자체 표시한다.",
+      "required": ["title", "body"],
+      "additionalProperties": false,
+      "properties": {
+        "title": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "body": { "type": "string", "minLength": 1, "maxLength": 240 }
+      }
+    },
+
+    "AndroidConfig": {
+      "type": "object",
+      "required": ["priority", "collapse_key", "ttl"],
+      "additionalProperties": false,
+      "properties": {
+        "priority": { "type": "string", "enum": ["normal", "high"], "description": "*.failed → high, 그 외 normal" },
+        "collapse_key": { "type": "string", "description": "job_id. 같은 잡의 알림은 마지막 것만 표시" },
+        "ttl": { "type": "string", "pattern": "^[0-9]+s$", "description": "기본 86400s" }
+      }
+    },
+
+    "ApnsConfig": {
+      "type": "object",
+      "required": ["headers"],
+      "additionalProperties": false,
+      "properties": {
+        "headers": {
+          "type": "object",
+          "required": ["apns-priority", "apns-collapse-id"],
+          "additionalProperties": false,
+          "properties": {
+            "apns-priority": { "type": "string", "enum": ["5", "10"] },
+            "apns-collapse-id": { "type": "string", "maxLength": 64 }
+          }
+        }
+      }
+    },
+
+    "DataBase": {
+      "type": "object",
+      "description": "모든 data 페이로드의 공통 필드",
+      "required": ["schema_version", "type", "event_id", "project_id", "job_id", "occurred_at", "deep_link"],
+      "properties": {
+        "schema_version": { "type": "string", "const": "1" },
+        "type": { "$ref": "#/$defs/PushEventType" },
+        "event_id": { "type": "string", "format": "uuid", "description": "앱 측 중복 표시 방지 키" },
+        "project_id": { "$ref": "#/$defs/Id" },
+        "project_name": { "type": "string", "maxLength": 100 },
+        "job_id": { "$ref": "#/$defs/Id" },
+        "occurred_at": { "type": "string", "format": "date-time" },
+        "deep_link": {
+          "type": "string",
+          "description": "앱 라우터 경로",
+          "pattern": "^codeai://projects/[A-Za-z0-9_-]+(/(analyses|refactors|jobs)/[A-Za-z0-9_-]+)?$"
+        }
+      }
+    },
+
+    "IndexCompletedData": {
+      "allOf": [{ "$ref": "#/$defs/DataBase" }],
+      "required": ["commit_sha", "files_changed", "chunk_count"],
+      "properties": {
+        "type": { "const": "index.completed" },
+        "commit_sha": { "type": "string", "pattern": "^[0-9a-f]{7,40}$" },
+        "files_changed": { "$ref": "#/$defs/StringInt" },
+        "chunk_count": { "$ref": "#/$defs/StringInt" }
+      },
+      "unevaluatedProperties": false
+    },
+    "AnalysisCompletedData": {
+      "allOf": [{ "$ref": "#/$defs/DataBase" }],
+      "required": ["analysis_id", "critical_count", "major_count", "minor_count", "info_count"],
+      "properties": {
+        "type": { "const": "analysis.completed" },
+        "analysis_id": { "$ref": "#/$defs/Id" },
+        "critical_count": { "$ref": "#/$defs/StringInt" },
+        "major_count": { "$ref": "#/$defs/StringInt" },
+        "minor_count": { "$ref": "#/$defs/StringInt" },
+        "info_count": { "$ref": "#/$defs/StringInt" }
+      },
+      "unevaluatedProperties": false
+    },
+    "RefactorCompletedData": {
+      "allOf": [{ "$ref": "#/$defs/DataBase" }],
+      "required": ["refactor_id", "applies_cleanly"],
+      "properties": {
+        "type": { "const": "refactor.completed" },
+        "refactor_id": { "$ref": "#/$defs/Id" },
+        "applies_cleanly": { "$ref": "#/$defs/StringBool" }
+      },
+      "unevaluatedProperties": false
+    },
+    "JobFailedData": {
+      "allOf": [{ "$ref": "#/$defs/DataBase" }],
+      "required": ["error_code"],
+      "properties": {
+        "type": { "enum": ["index.failed", "analysis.failed", "refactor.failed"] },
+        "analysis_id": { "$ref": "#/$defs/Id" },
+        "refactor_id": { "$ref": "#/$defs/Id" },
+        "error_code": {
+          "type": "string",
+          "description": "backend.v1.yaml ErrorCode 값",
+          "pattern": "^[a-z_]+$"
+        }
+      },
+      "unevaluatedProperties": false
+    },
+
+    "PushData": {
+      "description": "type 값으로 구분되는 data 페이로드",
+      "oneOf": [
+        { "$ref": "#/$defs/IndexCompletedData" },
+        { "$ref": "#/$defs/AnalysisCompletedData" },
+        { "$ref": "#/$defs/RefactorCompletedData" },
+        { "$ref": "#/$defs/JobFailedData" }
+      ]
+    }
+  }
+}

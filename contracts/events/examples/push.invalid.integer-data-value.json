@@ -1,0 +1,19 @@
+{
+  "notification": { "title": "분석 완료", "body": "x" },
+  "data": {
+    "schema_version": "1",
+    "type": "analysis.completed",
+    "event_id": "6f1c2a0e-3b7d-4f0a-9a43-2f6f1d0c9b11",
+    "project_id": "prj_01",
+    "job_id": "job_77",
+    "analysis_id": "ana_42",
+    "occurred_at": "2026-10-21T09:30:00Z",
+    "deep_link": "codeai://projects/prj_01/analyses/ana_42",
+    "critical_count": 1,
+    "major_count": "3",
+    "minor_count": "5",
+    "info_count": "0"
+  },
+  "android": { "priority": "normal", "collapse_key": "job_77", "ttl": "86400s" },
+  "apns": { "headers": { "apns-priority": "5", "apns-collapse-id": "job_77" } }
+}
