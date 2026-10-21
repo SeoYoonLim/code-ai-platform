@@ -10,7 +10,7 @@ WEB_GEN      := apps/web/src/lib/api/schema.d.ts
 DART_GEN_DIR := apps/mobile/packages/api_client
 
 .PHONY: help install up down logs dev dev-engine dev-backend dev-worker dev-web dev-mobile \
-        test test-unit test-integration test-web test-mobile lint lint-py lint-imports \
+        test test-unit test-integration test-web test-mobile lint lint-py lint-imports lint-size \
         typecheck format validate-contracts gen-clients gen-py gen-ts gen-dart verify-clients check check-contracts clean gpu-status gpu-train-mode gpu-serve-mode
 
 help: ## 사용 가능한 타겟 목록
@@ -77,7 +77,7 @@ test-mobile: ## Flutter 테스트
 	cd apps/mobile && flutter test
 
 # --- 품질 --------------------------------------------------------------------
-lint: lint-py lint-imports typecheck ## 모든 Python 정적 검사
+lint: lint-py lint-imports typecheck lint-size ## 모든 Python 정적 검사
 
 lint-py: ## ruff 린트 + 포맷 검사
 	uv run ruff check .
@@ -85,6 +85,9 @@ lint-py: ## ruff 린트 + 포맷 검사
 
 lint-imports: ## 레이어 의존성 계약 검사 (import-linter)
 	uv run lint-imports
+
+lint-size: ## 파일당 300줄 규칙 검사 (생성물 제외)
+	uv run python scripts/check_file_lines.py --max 300
 
 typecheck: ## mypy --strict
 	uv run mypy packages/py-common/src services/ai-engine/src services/backend/src
@@ -121,15 +124,12 @@ gen-ts: ## TypeScript 타입 생성 → apps/web (openapi-typescript)
 	npx --yes openapi-typescript@7.4.4 $(BACKEND_SPEC) -o $(WEB_GEN)
 
 OPENAPI_GENERATOR_IMAGE := openapitools/openapi-generator-cli:v7.10.0
-gen-dart: ## Dart(dio) 클라이언트 생성 → apps/mobile (Java 없으면 Docker 사용)
-	@if command -v java >/dev/null 2>&1; then \
-		npx --yes @openapitools/openapi-generator-cli@2.15.3 generate -i $(BACKEND_SPEC) \
-			-g dart-dio -o $(DART_GEN_DIR) --additional-properties=pubName=api_client; \
-	else \
-		MSYS_NO_PATHCONV=1 docker run --rm -v "$(CURDIR):/local" $(OPENAPI_GENERATOR_IMAGE) generate \
-			-i /local/$(BACKEND_SPEC) -g dart-dio -o /local/$(DART_GEN_DIR) \
-			--additional-properties=pubName=api_client; \
-	fi
+# 생성기 버전 고정을 위해 항상 Docker 이미지 사용. npx openapi-generator-cli 는 jar 버전을
+# 고정하지 않아 CI 러너(Java 있음)와 로컬 출력이 달라졌다 (PR #1 drift 원인).
+gen-dart: ## Dart(dio) 클라이언트 생성 → apps/mobile (Docker, openapi-generator 고정 버전)
+	MSYS_NO_PATHCONV=1 docker run --rm -v "$(CURDIR):/local" $(OPENAPI_GENERATOR_IMAGE) generate \
+		-i /local/$(BACKEND_SPEC) -g dart-dio -o /local/$(DART_GEN_DIR) \
+		--additional-properties=pubName=api_client
 
 DART_IMAGE := dart:3.5
 verify-clients: ## 생성물 컴파일 검증 (Python import · tsc · dart analyze)
