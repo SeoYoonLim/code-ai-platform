@@ -47,13 +47,13 @@ jobs:
             apps/web/src/lib/api
             apps/mobile/packages/api_client
           )
-          git diff --exit-code -- "${paths[@]}" || {
-            echo "::error::생성물이 contracts와 불일치합니다. 'make gen-clients' 후 커밋하세요."
-            exit 1
-          }
+          # 변경·신규 파일을 한 번에 수집한다. 원본 로그는 인증 없이 볼 수 없으므로
+          # 파일 목록을 annotation(공개)으로도 남긴다.
           status=$(git status --porcelain --untracked-files=all -- "${paths[@]}")
           if [[ -n "$status" ]]; then
             printf '%s\n' "$status"
-            echo "::error::생성물이 contracts와 불일치합니다. 'make gen-clients' 후 커밋하세요."
+            git diff --stat -- "${paths[@]}"
+            summary=$(printf '%s\n' "$status" | head -n 20 | tr '\n' ';')
+            echo "::error title=Generated client drift::생성물이 contracts와 불일치합니다. 'make gen-clients' 후 커밋하세요. 변경 파일(최대 20): ${summary}"
             exit 1
           fi

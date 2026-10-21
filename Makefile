@@ -124,15 +124,12 @@ gen-ts: ## TypeScript 타입 생성 → apps/web (openapi-typescript)
 	npx --yes openapi-typescript@7.4.4 $(BACKEND_SPEC) -o $(WEB_GEN)
 
 OPENAPI_GENERATOR_IMAGE := openapitools/openapi-generator-cli:v7.10.0
-gen-dart: ## Dart(dio) 클라이언트 생성 → apps/mobile (Java 없으면 Docker 사용)
-	@if command -v java >/dev/null 2>&1; then \
-		npx --yes @openapitools/openapi-generator-cli@2.15.3 generate -i $(BACKEND_SPEC) \
-			-g dart-dio -o $(DART_GEN_DIR) --additional-properties=pubName=api_client; \
-	else \
-		MSYS_NO_PATHCONV=1 docker run --rm -v "$(CURDIR):/local" $(OPENAPI_GENERATOR_IMAGE) generate \
-			-i /local/$(BACKEND_SPEC) -g dart-dio -o /local/$(DART_GEN_DIR) \
-			--additional-properties=pubName=api_client; \
-	fi
+# 생성기 버전 고정을 위해 항상 Docker 이미지 사용. npx openapi-generator-cli 는 jar 버전을
+# 고정하지 않아 CI 러너(Java 있음)와 로컬 출력이 달라졌다 (PR #1 drift 원인).
+gen-dart: ## Dart(dio) 클라이언트 생성 → apps/mobile (Docker, openapi-generator 고정 버전)
+	MSYS_NO_PATHCONV=1 docker run --rm -v "$(CURDIR):/local" $(OPENAPI_GENERATOR_IMAGE) generate \
+		-i /local/$(BACKEND_SPEC) -g dart-dio -o /local/$(DART_GEN_DIR) \
+		--additional-properties=pubName=api_client
 
 DART_IMAGE := dart:3.5
 verify-clients: ## 생성물 컴파일 검증 (Python import · tsc · dart analyze)

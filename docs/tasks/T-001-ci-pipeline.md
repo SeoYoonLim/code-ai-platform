@@ -156,3 +156,8 @@ lint-size: ## 파일당 300줄 규칙 검사 (생성물 제외)
 - CI 링크: PR push 후 추가 예정. 두 job의 실제 green/15분 이내 실행은 미확인.
 - 로컬 전체 TS/Dart 재생성/컴파일은 미실행; PR의 contracts job에서 검증 필요.
 - 첫 green 이후 main 보호 규칙 설정은 사람 후속 작업.
+
+### PR #1 CI 1차 실행 (Claude, 2026-10-21)
+- `python` ✅ / `contracts` ❌: `Check generated client drift` 단계 실패
+- 원인: `gen-dart`가 Java가 있으면 `npx @openapitools/openapi-generator-cli`를 쓰는데, 이 경로는 생성기 jar 버전을 고정하지 않는다. GitHub 러너에는 Java가 있어 최신 jar로 생성됐고, 커밋된 생성물(Docker `v7.10.0`)과 달라졌다. Python과 TS 생성물은 로컬에서 재생성해 비교해 보니 CRLF 외 차이가 없었다
+- 수정: `gen-dart`는 항상 Docker `openapitools/openapi-generator-cli:v7.10.0`을 사용. drift 단계는 변경 파일 목록을 공개 annotation으로 출력 (원본 로그는 인증 필요)

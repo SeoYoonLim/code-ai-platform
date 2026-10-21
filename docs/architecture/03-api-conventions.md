@@ -172,6 +172,6 @@ Backend 측: 사용자 연결이 끊겨도 Engine 생성은 **계속**하고 버
 2. `make check-contracts` (= `gen-clients` → `verify-clients` → `test`)
    - Python: datamodel-codegen → `py_common/generated/` → import 및 예시 파싱 테스트
    - TS: openapi-typescript → `apps/web/src/lib/api/schema.d.ts` → `tsc --strict`
-   - Dart: openapi-generator `dart-dio` → `apps/mobile/packages/api_client` → `build_runner` + `dart analyze` (Java나 Dart가 없으면 Docker로 실행)
+   - Dart: openapi-generator `dart-dio` → `apps/mobile/packages/api_client` → `build_runner` + `dart analyze` (생성은 버전 고정을 위해 항상 Docker 이미지 `openapitools/openapi-generator-cli:v7.10.0`, 분석은 Dart가 없으면 Docker)
 3. 깨진 구현이나 테스트를 수정한다. 영향받는 작업 카드에 변경 사항을 기록한다.
 4. 하위 호환이 깨지는 변경이면 ADR을 작성한다.
