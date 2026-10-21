@@ -51,7 +51,7 @@ Codex의 규칙은 [AGENTS.md](AGENTS.md)에 있다. 작업은 **작업 카드**
 | D4 | Contract-first (OpenAPI 3.1 SSOT) | Python/TS/Dart 타입 자동 생성으로 드리프트 차단 |
 | D5 | tree-sitter 심볼 단위 청킹 | 줄 단위 분할 대비 검색 정확도 향상, 결과를 심볼에 매핑 가능 |
 | D6 | ~~dev=Ollama, prod=vLLM~~ → **생성 서빙: `llama-server --lora`, Ollama는 임베딩 전용** ([ADR-0003](docs/adr/0003-base-model-and-lora-serving.md)) | Ollama 0.40.7이 LoRA `ADAPTER`를 제거. `llama-server`는 어댑터 전환 ~4ms, 요청별 override 가능. vLLM은 MVP 범위 밖 |
-| D9 | **개발 GPU 예산: RTX 4060 8GB, Base 모델 3B 확정** ([ADR-0002](docs/adr/0002-gpu-budget-rtx4060-8gb.md), [ADR-0003](docs/adr/0003-base-model-and-lora-serving.md)) | Qwen2.5-Coder-**3B**-Instruct Q4_K_M. 서빙 3.77GB(8K ctx, 병렬 2), QLoRA 학습 3.6~4.6GB. 7B는 학습 가드 초과로 폐기. 학습과 서빙은 배타적 (`make gpu-train-mode`) |
+| D9 | **개발 GPU 예산: RTX 4060 8GB, Base 모델 3B 확정** ([ADR-0002](docs/adr/0002-gpu-budget-rtx4060-8gb.md), [ADR-0003](docs/adr/0003-base-model-and-lora-serving.md)) | Qwen2.5-Coder-**3B**-Instruct Q4_K_M. 서빙 약 3.7 GiB(시스템 전체 3,765 MiB; 8K ctx, 병렬 2), QLoRA 학습 3.6~4.6GB. 7B는 학습 가드 초과로 폐기. 학습과 서빙은 배타적 (`make gpu-train-mode`) |
 | D7 | `ml/`은 workspace 제외 | torch/CUDA 버전 충돌을 서비스 환경과 격리 |
 | D8 | engine.core는 순수 Python(dataclass) | 프레임워크 비의존. Pydantic은 API 경계(생성 모델)에서만 |
 

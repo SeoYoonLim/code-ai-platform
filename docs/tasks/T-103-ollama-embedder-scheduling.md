@@ -22,8 +22,14 @@ GPU가 CPU보다 **약 20배** 빠르다. 10k LOC ≈ 1,500 청크는 GPU에서 
 ### ⚠️ 함정 1 — `num_gpu`를 생략하면 장치가 고착된다
 CPU 러너(`num_gpu: 0`)가 한 번 올라간 뒤에 `num_gpu`를 **생략한** 요청은 모델을 다시 올리지 않고 **CPU 러너를 그대로 쓴다** (재로드 0초, 그러나 `ollama ps`는 `100% CPU`). "기본값 = GPU"라고 가정하면 안 된다. **모든 요청에 `options.num_gpu`를 명시한다** — GPU는 `99`, CPU는 `0`.
 
-### ⚠️ 함정 2 — 모델 별칭(alias)으로 장치를 나누는 방식은 동작하지 않았다
-`FROM nomic-embed-text` + `PARAMETER num_gpu 0` 별칭을 만들어 두 이름으로 번갈아 호출했지만, 같은 가중치 blob을 쓰는 한 `ollama ps`에는 러너가 하나만 보이고 장치도 하나로 고정됐다. 별칭 방식은 쓰지 않는다.
+### 함정 2 — 모델 별칭(alias)으로 장치를 나눠도 **전환 비용은 줄지 않는다** (재시험으로 정정)
+`FROM nomic-embed-text` + `PARAMETER num_gpu 99`/`0` 별칭 두 개를 만들어 **모두 내린 깨끗한 상태**에서 번갈아 호출했다. 별칭 이름만으로 장치가 정확히 결정된다
+(`options` 없이도 GPU 별칭 → `100% GPU` 약 2.4초/배치, CPU 별칭 → `100% CPU` 약 7.4초/배치). 그러나 **러너는 한 번에 하나만 상주**해서
+호출마다 `load_duration`이 1.7 ~ 2.2초로 찍히며 번갈아 교체된다. 즉 별칭 방식의 전환 비용(≈2초)은 `options.num_gpu` 방식과 같고, 이점이 없다.
+> 이 카드의 초판은 "별칭은 동작하지 않았다"고 썼으나, 그 시험은 CPU 러너가 이미 떠 있는 상태에서 시작한 **통제되지 않은 실험**이었다. 깨끗한 상태에서 다시 재서 정정했다.
+
+**결론:** 구현은 `options.num_gpu`를 명시하는 방식(함정 1의 규칙)으로 한다. 별칭은 쓸 이유가 없다. 두 러너를 동시에 상주시키는 방법(전환 비용 0)은
+이 Ollama 버전에서 확인하지 못했다 — 필요하면 Codex가 `OLLAMA_MAX_LOADED_MODELS`/`OLLAMA_NUM_PARALLEL` 조합으로 시도하고 결과를 "결과"에 남긴다(필수 아님).
 
 ## 정책 (Claude 설계 — 이대로 구현한다)
 
@@ -114,7 +120,7 @@ embed_query:
 ## 금지 사항
 - `core/**`, `contracts/**` 수정 금지
 - `adapters/llm`, `adapters/vectorstore`, `adapters/parsing` import 금지 (import-linter). 게이지는 `engine.core.interfaces.ActivityGauge`로만 받는다
-- `num_gpu`를 생략하는 요청 금지 (함정 1). 모델 별칭으로 장치를 나누는 방식 금지 (함정 2)
+- `num_gpu`를 생략하는 요청 금지 (함정 1). 모델 별칭으로 장치를 나누는 방식은 이점이 없으므로 쓰지 않는다 (함정 2)
 - `time.sleep`/`asyncio.sleep`에 의존하는 단위 테스트 금지 — 시계는 주입한다
 
 ## 결과

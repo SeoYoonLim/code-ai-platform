@@ -13,11 +13,11 @@ ADR-0002는 Qwen2.5-Coder-7B-Instruct를 Primary로, 3B를 Fallback으로 두고
 | D-5 기준 | 7B | 3B |
 |---|---|---|
 | ① 학습 reserved < 6.5GB | ❌ FAIL (6.92GB, seq=2048) | ✅ PASS (3.57~4.59GB) |
-| ② 서빙 ≤7.5GB, 100% GPU | ✅ PASS (5.93GB) | ✅ PASS (3.77GB) |
+| ② 서빙 ≤7.5GB, 100% GPU | ✅ PASS (5,928 MiB ≈ 5.79 GiB) | ✅ PASS (3,765 MiB ≈ 3.68 GiB) |
 | ③ ≥20 tok/s, TTFT p95<3s | ✅ PASS (43.8 tok/s) | ✅ PASS (81.2 tok/s) |
 | ④ 5k샘플 학습 ≤12h | 측정 불가 (가드로 중단) | ✅ PASS (1.8~1.9h) |
 
-7B는 **서빙은 전혀 문제없으나 학습이 안전 마진을 지키지 못한다.** 가드를 풀고 억지로 돌리면 OOM 없이 끝나지만(reserved 6.98~7.75GB, 시스템 peak 최대 7,945/8,188 MiB) 여유가 250~550MiB뿐이라 다른 GPU 사용(브라우저 등)과 상시 충돌 위험이 있다.
+7B는 **서빙은 전혀 문제없으나 학습이 안전 마진을 지키지 못한다.** 가드를 풀고 seq 1024로 돌린 한 조합은 OOM 없이 완료됐지만 (reserved 7.61GB, 시스템 peak 7,945/8,188 MiB) 여유가 약 240 MiB뿐이라 다른 GPU 사용(브라우저 등)과 상시 충돌 위험이 있다. seq 2048·4096은 수정된 이미지에서 가드 해제 측정을 하지 않았다(판정과 무관).
 
 추가로, 계획했던 서빙 경로(Plan A: LoRA GGUF를 Ollama `ADAPTER`로 로드)가 **Ollama 0.40.7에서 완전히 제거**된 것을 확인했다. GGUF·safetensors 두 형식 모두 CLI 단계에서 `Error: LoRA adapters are no longer supported`로 거절된다. 대안으로 두 경로를 검증했다.
 
@@ -39,7 +39,7 @@ ADR-0002는 Qwen2.5-Coder-7B-Instruct를 Primary로, 3B를 Fallback으로 두고
 - vLLM(D6 prod 대안)은 MVP 범위에서 보류한다. 운영 환경에서 더 큰 GPU를 확보하면 재검토한다.
 
 ### D-3: 임베딩 GPU/CPU 동적 스케줄링 (M1 반영)
-- CPU 임베딩 처리량이 4.79 chunks/s로 ADR-0002 기준(10)에 못 미쳤다(D5). 3B 전환으로 생긴 VRAM 여유(기본 서빙 3.77GB → 약 4.2GB 여유)를 활용해 **LLM이 유휴(요청 없음)일 때는 임베딩을 GPU로, 생성 요청이 들어오면 임베딩을 CPU로 폴백**하는 동적 정책을 `IndexingService`/`Embedder` 어댑터에 넣는다.
+- CPU 임베딩 처리량이 4.79 chunks/s로 ADR-0002 기준(10)에 못 미쳤다(D5). 3B 전환으로 생긴 VRAM 여유(기본 서빙 시스템 전체 3,765 MiB → 8,188 MiB 중 약 4.3 GiB 여유)를 활용해 **LLM이 유휴(요청 없음)일 때는 임베딩을 GPU로, 생성 요청이 들어오면 임베딩을 CPU로 폴백**하는 동적 정책을 `IndexingService`/`Embedder` 어댑터에 넣는다.
 - 정책 상세(판단 기준, 전환 지연, 동시 생성 중 색인 처리)는 M1 작업 카드(T-103)에서 설계·구현한다.
 
 ## 결과
@@ -59,5 +59,8 @@ ADR-0002는 Qwen2.5-Coder-7B-Instruct를 Primary로, 3B를 Fallback으로 두고
 **(−)** 모델 품질은 3B가 7B보다 낮다. M6 평가에서 base 기준선(로드맵 M2) 자체가 3B로 낮아지므로, 리팩터/분석 품질 지표를 재설정해야 한다.
 
 ## 미해결 사항 (후속 조사)
+- **검증 범위의 한계 1 — 기저 GGUF:** `llama-server --lora` 검증(카나리아 20/20, 전환 ~4ms)은 **Ollama가 저장한 Q4_K_M blob**을 base로 했다. 배포용으로 새로 받을 Qwen 공식 GGUF에서도 어댑터가 같은 결과를 내는지는 아직 확인하지 않았다 (T-102 통합 테스트가 맡는다).
+- **검증 범위의 한계 2 — 카나리아는 품질 지표가 아니다:** 카나리아는 "고정 문자열로 답을 시작한다"는 아주 쉬운 행동이다. 어댑터 로딩·전환·격리가 **기계적으로** 동작한다는 증거일 뿐, 어댑터가 **분석·리팩터링 품질을 실제로 높이는지**는 측정한 적이 없다 (M6 평가 게이트에서 처음 확인한다). 3B의 base 품질 기준선도 M2에서 처음 잰다.
+- **Ollama `ADAPTER` 제거의 출처:** 이 컨테이너에서 관측한 사실은 `Error: LoRA adapters are no longer supported`(GGUF·safetensors 모두)뿐이다. "의도적 제거"와 PR 번호는 서드파티 이슈의 소스 분석에서 나온 것이며 Ollama 공식 릴리스 노트로는 확인하지 못했다.
 - S-01 A1(seq=1024)이 A2(seq=2048)보다 VRAM을 더 쓰는 현상 — 원인 미규명.
 - D3(구조화 출력 JSON 준수율)을 `llama-server` 경로로 재측정 필요 (Ollama ADAPTER 경로가 막혀 미측정 상태로 남음) — T-102 수락 기준에 포함.
