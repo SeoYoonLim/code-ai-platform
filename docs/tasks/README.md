@@ -1,12 +1,12 @@
 # 작업 카드 보드
 
-작성 규칙: [TEMPLATE.md](TEMPLATE.md) · Codex 규칙: [AGENTS.md](../../AGENTS.md) · 로드맵: [04-mvp-roadmap.md](../architecture/04-mvp-roadmap.md)
+저장소: https://github.com/SeoYoonLim/code-ai-platform · 작성 규칙: [TEMPLATE.md](TEMPLATE.md) · Codex 규칙: [AGENTS.md](../../AGENTS.md) · 로드맵: [04-mvp-roadmap.md](../architecture/04-mvp-roadmap.md)
 
 ## M0 — Foundation + Spike (W1: 10/26–10/30)
 
 | ID | 제목 | 담당 | 의존 | 상태 | 우선순위 |
 |---|---|---|---|---|---|
-| [T-001](T-001-ci-pipeline.md) | CI 파이프라인 (GitHub Actions) | Codex | GitHub 원격 | **blocked** (원격 미연결) | P0 |
+| [T-001](T-001-ci-pipeline.md) | CI 파이프라인 (GitHub Actions) | Codex | — | **ready** | P0 — S-01과 병행 |
 | [T-002](T-002-dockerfiles.md) | Backend / AI Engine Dockerfile | Codex | T-001 | ready | P1 |
 | [T-003](T-003-py-common-runtime.md) | py_common 런타임 (설정·로깅·request_id·Problem 핸들러) | Codex | T-001 | ready | P1 |
 | [T-004](T-004-web-scaffold.md) | Web 스캐폴딩 (Next.js) | Codex | T-001 | ready | P2 |

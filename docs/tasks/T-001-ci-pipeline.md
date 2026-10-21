@@ -2,7 +2,8 @@
 
 - **담당:** Codex
 - **작성:** Claude · 2026-10-21
-- **상태:** blocked: GitHub 원격 저장소가 연결되면 ready (CI 실행에 필요)
+- **상태:** ready (2026-10-21 해제: 원격 `https://github.com/SeoYoonLim/code-ai-platform` 연결, `main` push 완료)
+- **후속 (사람):** CI가 처음 green이 되면 GitHub Settings → Branches에서 `main` 보호 규칙을 설정한다. required checks: `python`, `contracts` / PR 필수 / force push 금지
 - **우선순위:** P0. 이후 모든 PR이 이 CI를 통과해야 하므로 가장 먼저 한다
 - **관련 문서:** [AGENTS.md §5–6](../../AGENTS.md), [03-api-conventions.md §5](../architecture/03-api-conventions.md), [Makefile](../../Makefile)
 
@@ -82,7 +83,7 @@ lint-size: ## 파일당 300줄 규칙 검사 (생성물 제외)
 ```
 
 ## 수락 기준
-- [ ] `python`, `contracts` 두 job이 현재 `main`(806a236 이후) 기준으로 **green**
+- [ ] `python`, `contracts` 두 job이 PR(`task/T-001-ci-pipeline` → `main`)에서 **green** (Actions 탭 링크를 결과에 기록)
 - [ ] 의도적으로 깨뜨린 경우 각각 **red**가 되는지 로컬 또는 PR에서 확인하고 결과에 기록:
   - [ ] `contracts/openapi/backend.v1.yaml`에 schema 필드를 추가하고 재생성 없이 커밋 → `contracts` job 실패 (drift)
   - [ ] 301줄짜리 `.py` 파일 추가 → `python` job 실패 (lint-size)
