@@ -92,14 +92,14 @@ git 초기화는 착수 전(10/21)에 끝났다 (`806a236`). 카드: [docs/tasks
 | [T-101](../tasks/T-101-fake-adapters.md) | `adapters/{llm,embeddings,vectorstore}/fake·in_memory` + 서비스 테스트 fixture | 전체 |
 | [T-102](../tasks/T-102-llamaserver-provider.md) | `adapters/llm/llamacpp.py` (`LlamaServerProvider`: generate/stream/health, 어댑터 전환, 에러 변환) + `docker-compose` llama-server 서비스 ([ADR-0003](../adr/0003-base-model-and-lora-serving.md)) | `LLMProvider` |
 | [T-103](../tasks/T-103-ollama-embedder-scheduling.md) | `adapters/embeddings/ollama_embed.py` (`nomic-embed-text`, 배치, L2 정규화, prefix) + **GPU/CPU 동적 스케줄링** (LLM 유휴 시 GPU, 생성 요청 시 CPU 폴백) | `Embedder` |
-| T-104 | `adapters/vectorstore/chroma.py` | `VectorStore` |
+| [T-104](../tasks/T-104-chroma-vectorstore.md) | `adapters/vectorstore/chroma.py` (이름 변환·메타데이터 코덱·`$and` 필터, 진짜 서버로 스위트 재검증) | `VectorStore` |
 | T-105 | `adapters/parsing/treesitter_chunker.py` — Python, TypeScript + window 폴백 (S-02 리포트 입력) | `CodeChunker` |
 | T-106 | `adapters/registry_file.py` | `LoRAAdapterRegistry` |
 | T-107 | `services/indexing_service.py` (증분, 취소, 진행률) + 인메모리 잡 저장 | — |
 | T-108 | `services/rag_service.py` (§4.1 컨텍스트 조립) | — |
 | T-109 | `api/v1/{system,generate,index,retrieve}.py` + `main.py` DI 조립 + 계약 테스트 | — |
 
-> T-101~T-103 카드는 작성 완료. T-104~T-109는 앞선 카드 구현 결과를 보고 순차 작성한다.
+> T-101~T-104 카드는 작성 완료. T-105~T-109는 앞선 카드 구현 결과를 보고 순차 작성한다.
 
 **완료 기준**
 - 샘플 저장소(~10k LOC Python/TS)를 full 색인하는 데 5분 미만, 파일 1개 변경 시 증분 색인 10초 미만
