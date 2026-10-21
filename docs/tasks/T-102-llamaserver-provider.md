@@ -2,7 +2,7 @@
 
 - **담당:** Codex
 - **작성:** Claude · 2026-10-21
-- **상태:** ready (T-101 머지 완료 `9056840`)
+- **상태:** **done** (2026-10-21, 리뷰·실서버 검증 완료)
 - **우선순위:** P0 — ADR-0003의 핵심 구현. 이후 분석·리팩터링·채팅(M2) 전부 이 위에서 동작한다
 - **관련 문서:** [ADR-0003](../adr/0003-base-model-and-lora-serving.md), [S-01 REPORT](../../ml/spikes/s01/results/REPORT.md), 인터페이스 [llm.py](../../services/ai-engine/src/engine/core/interfaces/llm.py) · [activity.py](../../services/ai-engine/src/engine/core/interfaces/activity.py), 에러 [errors.py](../../services/ai-engine/src/engine/core/errors.py)
 
@@ -157,4 +157,178 @@ Codex 샌드박스는 `.git`에 쓸 수 없어서 `git add`/`git commit`이 `ind
 - 이 서버를 8GB GPU에서 돌릴 때 VRAM: 3.77GB (8K·병렬 2), 16K 총 컨텍스트도 100% GPU (S-01 B6/B7)
 
 ## 결과
-<Codex 기록: 변경 파일, 단위/통합 테스트 결과, 구조화 출력 필드 선택과 통과율, usage 제공 여부, compose digest, 실행 로그>
+
+로컬 구현/검증 완료. Docker/GPU 수락 기준은 Claude의 후속 검증 대기 상태다.
+스테이징·커밋·push는 하지 않았다. 보호 경로 및 기존 ollama 블록 변경 없음.
+
+### 변경 파일 (줄 수 / 테스트 수)
+
+| 파일 | 줄 수 | 테스트 |
+|---|---:|---:|
+| services/ai-engine/src/engine/adapters/llm/llamacpp.py | 151 | — |
+| services/ai-engine/src/engine/adapters/llm/llamacpp_wire.py | 97 | — |
+| services/ai-engine/src/engine/settings.py | 11 | — |
+| services/ai-engine/tests/unit/adapters/llm/test_llamacpp.py | 252 | 46 통과 (상속 14 포함) |
+| services/ai-engine/tests/unit/adapters/llm/test_llamacpp_stream_io.py | 64 | 4 통과 |
+| services/ai-engine/tests/unit/test_engine_settings.py | 26 | 2 통과 |
+| services/ai-engine/tests/integration/__init__.py | 0 | — |
+| services/ai-engine/tests/integration/test_llamacpp_live.py | 128 | 5 미실행 |
+| infra/llama/entrypoint.sh | 12 | 가짜 서버 실행 2 통과 |
+| scripts/fetch_base_model.py | 72 | 모킹 실행 2 통과 |
+| scripts/models.lock | 1 | 최초 다운로드 전 빈 객체 |
+| scripts/tests/test_fetch_base_model.py | 40 | 2 통과 |
+| scripts/tests/test_llama_entrypoint.py | 56 | 2 통과 |
+| docker-compose.yml | 103 | YAML/config 검증 |
+| .env.example | 27 | — |
+| 본 작업 카드 | 결과 포함 300줄 이하 | — |
+
+### 구현 및 카드와 남은 차이
+
+- 모든 generate/stream/schema 요청은 전체 adapter id의 lora 목록을 전송한다.
+  선택한 것만 1.0, base는 모두 0.0. 요청 경로의 POST /lora-adapters는 없다.
+- SSE content 3개 + finish + usage-only + DONE으로 상속 규약을 검증했다.
+  마지막 청크 직전 카운터 감소, 중단/취소/오류 시 HTTP 응답 close 및 카운터 복구를 검증했다.
+- 구조화 출력은 작은 structured_format() 함수에서 표준 OpenAI 형식을 만든다:
+  response_format: {"type":"json_schema","json_schema":{"name":"response","schema":{...}}}.
+  build 11783에서 이 형식이 실제 동작하는지는 Claude가 확인해야 한다.
+- usage를 우선 사용하고 timings.prompt_n/predicted_n으로 폴백한다.
+  둘 다 없으면 EngineError("usage not provided")로 보고하며 임의의 0을 만들지 않는다.
+  실제 서버의 usage 제공 여부는 미확인이다.
+- 모델 별칭은 설정값으로 시작하고 정상 health 확인 시 /props model_alias로 갱신한다.
+- **이미지 digest 미고정:** Docker pull/inspect 금지 범위이므로 검증된 digest가 없다.
+  현재 server-cuda 태그가 기본이며 LLAMACPP_IMAGE로 지정할 수 있다.
+  Claude가 확인한 RepoDigest를 compose의 image에 고정해야 한다.
+- **모델 SHA256 상수/lock 미확정:** 다운로드 금지 범위이므로 해시를 임의로 만들지 않았다.
+  models.lock은 빈 객체이며 최초 다운로드 시 계산한 해시를 기록한다.
+  이후 파일/재다운로드를 그 값과 대조한다. 최초 해시 확인 및 lock 검토/커밋은 Claude가 수행한다.
+- 테스트 책임 분리를 위해 stream I/O, 설정, 다운로드, entrypoint 테스트 파일을 추가했다.
+  외부 패키지는 추가 설치하지 않았다 (기존 py-common 의존성의 pydantic-settings 사용).
+
+### 실제 실행 결과
+
+uv 명령은 UV_CACHE_DIR=C:/project/project1/.data/uv-cache 사용.
+기본 uv 캐시는 sdists-v9/.git 접근 거부로 초기화 실패했다.
+아래 최종 명령은 모두 종료 코드 0이다.
+
+```text
+uv run ruff check .
+All checks passed!
+
+uv run ruff format --check .
+199 files already formatted
+
+uv run lint-imports
+Analyzed 87 files, 79 dependencies.
+Contracts: 5 kept, 0 broken.
+
+uv run mypy packages/py-common/src services/ai-engine/src services/backend/src
+Success: no issues found in 66 source files
+
+uv run python scripts/check_file_lines.py --max 300
+(출력 없음, exit 0)
+
+uv run pytest -q
+183 passed, 5 deselected, 1 warning in 6.82s
+
+uv run openapi-spec-validator contracts/openapi/engine.v1.yaml
+contracts/openapi/engine.v1.yaml: OK
+
+uv run openapi-spec-validator contracts/openapi/backend.v1.yaml
+contracts/openapi/backend.v1.yaml: OK
+```
+
+- pytest 경고: .pytest_cache/v/cache/nodeids 쓰기에 WinError 183 (테스트 통과).
+  최초 --basetemp=.data/pytest-t102 실행은 기존 test_traversal_fallback이 상위 Git 저장소를
+  발견해 1 failed, 173 passed였다. 기본 temp로 재실행하니 통과해 최종 실행에 --basetemp는 불필요했다.
+  관련 기존 소스/테스트는 변경하지 않았다.
+- bash -n infra/llama/entrypoint.sh: exit 0, 출력 없음 (정적 문법 검사).
+- uv run python -c "import yaml; yaml.safe_load(open('docker-compose.yml', encoding='utf-8')); print('YAML valid')":
+  exit 0, YAML valid.
+- docker compose config: exit 0, llama-server의 GPU 예약/볼륨/entrypoint/healthcheck 설정 출력.
+  Docker config.json 접근 거부 경고 2개가 있었으나 설정 검증은 성공했다. daemon은 실행하지 않았다.
+- uv run python scripts/fetch_base_model.py --help: exit 0, [-h] [--destination DESTINATION] 도움말 출력.
+- entrypoint는 테스트에서 절대 경로만 임시 경로/가짜 실행 파일로 치환하여 bash로 실제 실행했다.
+  어댑터 없음/2개에 대해 --lora 정렬 목록과 -c 16384 -np 2 -fa on 등 전체 인자를 확인했다.
+- fetch()는 respx 합성 바이트로 실제 실행했다. 최초 해시 기록, 일치 시 skip, 불일치 실패 및
+  .part 정리, 잘못된 lock 검증을 실행했다. 실제 모델 다운로드는 하지 않았다.
+- git diff --stat 및 별도 검사: 보호 경로 변경 없음, ollama 블록 원문 동일, 새 테스트 이름 전역 고유.
+  줄 수 스크립트가 untracked 파일을 제외하므로 신규 파일도 별도로 세어 전부 300줄 이하 확인.
+
+### 미실행 (Claude가 실행)
+
+- Docker 이미지 pull, 실제 build/digest 확인 및 compose image digest 고정.
+- 실제 entrypoint/서버 실행, compose up 후 60초 내 healthy와 /health HTTP 200.
+- 공식 Qwen GGUF 다운로드, SHA256 확인 및 scripts/models.lock 값 확정.
+- 공식 GGUF에서 base 응답 및 usage 확인.
+- canary adapter 20/20 표식, base 20/20 비표식.
+- adapter/base 동시 요청 각 8회 격리 검증.
+- 스트림 중단 후 /slots is_processing=false 복구 검증.
+- build 11783의 response_format/json_schema 실제 지원 및 Finding 배열 10회 준수율 보고.
+- opt-in 통합 테스트 5개: ENGINE_IT_LLAMACPP_URL 설정 후
+  uv run pytest -m integration services/ai-engine/tests/integration/test_llamacpp_live.py -s
+  ENGINE_IT_ADAPTER_GGUF는 서버에 로드된 어댑터 파일명(stem)과 일치해야 한다.
+
+### 수정: 느린 소비자 타임아웃
+- 변경: `llamacpp.py` 151→165줄, `test_llamacpp_stream_io.py` 110→113줄(타입 주석만); 본 카드 299줄.
+- 연결/헤더/오류 본문 및 각 SSE anext 대기 시간만 누적 차감한다. 모든 yield는 timeout 밖이다.
+- AsyncExitStack은 실패/취소/aclose 시 응답을 닫고 finally는 in_flight를 복구한다.
+- 마지막 청크 직전 감소 및 finish_reason/usage 유지. generate()는 yield가 없어 영향 없고 변경하지 않았다.
+- 회귀 assertion 변경 없음. Docker/새 스크립트 실행/스테이징/커밋/push 없음. 보호 경로 변경 없음.
+- 아래는 실제 출력(모든 최종 명령 exit 0); UV_CACHE_DIR=C:/project/project1/.data/uv-cache.
+```text
+uv run pytest -q services/ai-engine/tests/unit/adapters/llm/test_llamacpp_stream_io.py services/ai-engine/tests/unit/adapters/llm/test_llamacpp.py
+52 passed, 1 warning in 3.39s
+uv run ruff check .
+All checks passed!
+uv run ruff format --check .
+199 files already formatted
+uv run lint-imports
+Analyzed 88 files, 80 dependencies.
+Contracts: 5 kept, 0 broken.
+uv run mypy --strict packages/py-common/src services/ai-engine/src services/backend/src services/ai-engine/tests/unit/adapters/llm/test_llamacpp_stream_io.py
+Success: no issues found in 67 source files
+uv run python scripts/check_file_lines.py --max 300
+(출력 없음)
+uv run pytest -q
+185 passed, 5 deselected, 1 warning in 9.32s
+uv run openapi-spec-validator contracts/openapi/engine.v1.yaml
+contracts/openapi/engine.v1.yaml: OK
+uv run openapi-spec-validator contracts/openapi/backend.v1.yaml
+contracts/openapi/backend.v1.yaml: OK
+```
+- 경고: 기존 .pytest_cache/v/cache/nodeids 쓰기 실패(WinError 183). 신규/변경 파일도 별도 줄 수 확인.
+
+### 리뷰 · 실서버 검증 (Claude, 2026-10-21)
+
+Codex는 Docker 접근이 없어 단위 테스트까지만 검증했다. 아래는 Claude가 **실제 서버(RTX 4060, 이미지 digest 고정, 공식 GGUF)** 에서 실행한 결과다.
+
+**환경 고정**
+- 이미지: `ghcr.io/ggml-org/llama.cpp@sha256:1bacc872b168d2d10bfd8c220336f5a2cd464c07605936ec146ee5198832ffce` (build 11783)
+- 모델: 공식 `Qwen/Qwen2.5-Coder-3B-Instruct-GGUF` `qwen2.5-coder-3b-instruct-q4_k_m.gguf`, 2,104,932,800 B, sha256 `724fb256…4730b7` — Hugging Face `X-Linked-ETag`와 **독립 대조**해 `scripts/models.lock`에 기록했다 (최초 다운로드 신뢰 방식 대신). `fetch_base_model.py`를 실제로 실행해 재다운로드 없이 검증 통과 확인.
+- compose 기동: `entrypoint.sh`가 `/adapters/*.gguf`를 스캔해 `--lora` 전달, **18초 만에 healthy**, 슬롯당 컨텍스트 8192, 시스템 VRAM 3,178 MiB.
+
+**실서버 통합 테스트 (`-m integration`, Codex가 쓴 5개 — 처음 실행): 5 passed**
+| 시나리오 | 결과 |
+|---|---|
+| base 응답 + `usage` | ✅ |
+| 카나리아 어댑터 20/20, `adapter=None` 20/20 비표식 (**공식 GGUF**) | ✅ |
+| 어댑터·base 동시 요청 격리 | ✅ |
+| 스트림 중단 시 서버 슬롯 해제 | ✅ |
+| 구조화 출력 Finding 스키마 | ✅ 10/10 |
+
+**카드 대비 실측 사실:** 구조화 출력은 `response_format: {"type":"json_schema",…}` 표준 형식이 이 빌드에서 그대로 동작한다. 스트림 `usage`는 `finish_reason` 청크 뒤의 `choices: []` 전용 청크로 오며(`stream_options.include_usage`), Codex의 파서 가정과 일치. 컨텍스트 초과는 `HTTP 400`, `type: exceed_context_size_error`로 오고 `ContextTooLarge`로 변환됨(generate/stream 모두, `in_flight` 복귀). 미등록 어댑터는 `AdapterNotFound`.
+
+**리뷰에서 발견·수정한 결함 3건**
+1. **`entrypoint.sh`가 CRLF라 컨테이너가 즉시 종료** (`/entrypoint.sh: 2: set: Illegal option -`, exit 2). Docker 없는 샌드박스에서는 발견 불가. `.gitattributes`에 `*.sh text eol=lf`를 추가하고 정규화.
+2. **`stream()`이 느린 소비자에서 오동작 (실서버로 재현·확정).** `asyncio.timeout`이 `yield`를 감싸서 소비자가 제어를 쥔 시간까지 `timeout_s`에 포함됐다. 결과: 서버는 정상인데 5초 뒤 `CancelledError`(`GenerationTimeout`이 아님)로 끊기고 **`in_flight`가 1로 영구 누수** — T-103 임베딩 스케줄링이 CPU에 고착될 수 있는 상태. 회귀 테스트 2개를 먼저 작성해 실패를 확인한 뒤 Codex가 수정(서버 대기 구간에만 예산 적용, 모든 `yield`는 타임아웃 밖). 수정 후 같은 실서버 재현에서 **190청크 정상 완주, `in_flight=0`**, 그리고 `docker pause`로 서버를 실제로 멈추면 3.2초에 `GenerationTimeout`·`in_flight=0`(타임아웃 보호 유지).
+3. **서버 정지 테스트가 구현 회귀 시 CI를 영구히 멈출 수 있음** (`pytest-timeout` 미설치). 타임아웃 로직을 제거한 변이에서 테스트가 무한 대기했다. `asyncio.wait_for(…, 5.0)` 상한을 추가해 약 7초 만에 `TimeoutError`로 실패하도록 확인.
+
+**변이 테스트** (단위 테스트가 핵심 규약을 지키는지): 
+`lora` 필드를 `adapter=None`에서 생략(실측된 "어댑터가 몰래 켜지는" 버그) 6건 실패 · 모든 어댑터 ON 6건 · 선택 어댑터 미적용 5건 · `in_flight`를 마지막 청크 뒤에 감소 6건 · 스트림 중단 시 `in_flight` 누수 24건 — **5/5 검출**. 타임아웃 제거 변이는 위 3번의 이유로 매달려 별도 수정.
+
+**검사:** ruff · format · import-linter 5/5 · mypy(src 66파일) · 300줄 · pytest **185 passed** 모두 통과. 금지 구역 변경 없음.
+
+**알려진 한계 / 후속**
+- `mypy --strict`를 **테스트까지** 돌리면 14건이 나온다. CI(`make typecheck`)는 `src`만 검사해 통과하며, 대부분은 pydantic mypy 플러그인이 `BaseSettings`의 `_env_file` 인자·`str`→`AnyHttpUrl` 변환을 모르는 것과 `jsonschema`/`yaml` 타입 스텁 부재다. 다만 `None` 가능 값에 바로 속성 접근하는 곳 2건(`test_llamacpp.py:79`, `test_engine_settings.py:16`)과 `AsyncIterator.aclose`(`test_llamacpp_live.py:84`)는 실제 타입 부정확이므로 후속에서 정리한다.
+- 컨텍스트 초과 분류가 메시지 문구(`"context size"`)에 의존한다. 서버가 안정 필드 `error.type == "exceed_context_size_error"`를 주므로 서버 버전이 바뀌어 문구가 달라지면 조용히 깨질 수 있다. 후속에서 `type` 필드 기준으로 바꾼다.
+- 어댑터 품질 효과는 여전히 미측정(카나리아는 기계적 동작 검증일 뿐 — ADR-0003 한계 2).
