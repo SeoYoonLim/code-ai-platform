@@ -1,5 +1,7 @@
 * text=auto eol=lf
 *.bat text eol=crlf
+# 컨테이너에 마운트되는 셸 스크립트는 어떤 OS/설정에서도 LF여야 한다 (CRLF면 'set: Illegal option -' 로 컨테이너가 즉시 종료)
+*.sh text eol=lf
 *.png binary
 *.jpg binary
 *.gguf binary
