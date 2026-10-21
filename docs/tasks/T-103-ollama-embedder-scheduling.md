@@ -2,7 +2,7 @@
 
 - **담당:** Codex
 - **작성:** Claude · 2026-10-21
-- **상태:** ready (T-101 `9056840`, T-102 `5f3e62c` 머지 완료)
+- **상태:** **done** (2026-10-21, 리뷰·실서버 검증 완료)
 - **우선순위:** P1 — R1(10k LOC 색인 5분 미만)의 직접 요인
 - **관련 문서:** [ADR-0003 D-3](../adr/0003-base-model-and-lora-serving.md), 인터페이스 [embedder.py](../../services/ai-engine/src/engine/core/interfaces/embedder.py) · [activity.py](../../services/ai-engine/src/engine/core/interfaces/activity.py), 에러 [errors.py](../../services/ai-engine/src/engine/core/errors.py)
 
@@ -176,4 +176,120 @@ Codex 샌드박스는 `.git`에 쓸 수 없어서 `git add`/`git commit`이 `ind
 - `time.sleep`/`asyncio.sleep`에 의존하는 단위 테스트 금지 — 시계는 주입한다
 
 ## 결과
-<Codex 기록: 변경 파일, 통합 테스트 수치(처리량·전환 시간·ollama ps), 후속 측정 결과, compose 변경>
+구현 완료, 작업 트리에 유지 (git add/commit/push 미실행). 실서버 수락 기준은 아래 미실행 목록으로 남긴다.
+
+### 변경 파일 (줄 수 / 테스트 수)
+
+| 파일 | 줄 수 | 테스트 수 |
+|---|---:|---:|
+| `services/ai-engine/src/engine/adapters/embeddings/ollama_embed.py` | 76 | — |
+| `services/ai-engine/src/engine/adapters/embeddings/device_policy.py` (신규) | 56 | — |
+| `services/ai-engine/src/engine/adapters/embeddings/ollama_wire.py` (신규) | 35 | — |
+| `services/ai-engine/src/engine/settings.py` | 22 | — |
+| `services/ai-engine/tests/unit/adapters/embeddings/test_device_policy.py` (신규) | 96 | 7 |
+| `services/ai-engine/tests/unit/adapters/embeddings/test_ollama_embed.py` (신규) | 186 | 25 (상속 8 포함) |
+| `services/ai-engine/tests/unit/test_engine_settings.py` | 94 | 12 (신규 10) |
+| `services/ai-engine/tests/integration/test_ollama_embed_live.py` (신규) | 91 | 4 (미실행) |
+| `scripts/provision_ollama.py` (신규) | 50 | — |
+| `scripts/tests/test_provision_ollama.py` (신규) | 62 | 6 |
+| `docker-compose.yml` | 103 | — |
+| 이 작업 카드 | 300줄 이하 | — |
+
+`decide()`는 문서 배치마다 정확히 한 번 호출하며, 질의와 빈 문서 입력은 게이지를 읽지 않는다.
+현재 장치의 `num_gpu`를 항상 명시하고, 모든 벡터의 수/차원/유한한 비영 norm을 검증하여 정규화한다.
+가짜 시계로 last_busy/grace/dwell/플래핑을 검증했다. respx 응답은 입력별 결정적인 768차원 비정규화 벡터다.
+상속 스위트도 테스트 전용 서브클래스의 `asyncio.wait_for(..., 5)`로 제한한다.
+기존 테스트 디렉터리만 사용했으며 새 테스트 파일 이름의 저장소 내 고유성을 확인했다.
+
+### 실제 실행한 검증 (모두 종료 코드 0)
+
+uv 기본 캐시 접근이 거부되어 각 명령에 `UV_CACHE_DIR=C:\project\project1\.uv-cache`를 설정했다.
+
+```text
+uv run ruff check .
+All checks passed!
+uv run ruff format --check .
+206 files already formatted
+uv run lint-imports
+Analyzed 90 files, 97 dependencies.
+Contracts: 5 kept, 0 broken.
+uv run mypy packages/py-common/src services/ai-engine/src services/backend/src
+Success: no issues found in 68 source files
+uv run python scripts/check_file_lines.py --max 300
+(출력 없음, exit 0)
+uv run pytest -q
+233 passed, 9 deselected, 1 warning in 10.88s
+uv run pytest --cov=engine --cov=backend --cov=py_common --cov-report=term-missing
+TOTAL 1407 statements, 14 missed, 99% coverage
+233 passed, 9 deselected, 1 warning in 11.22s
+uv run openapi-spec-validator contracts/openapi/engine.v1.yaml
+contracts/openapi/engine.v1.yaml: OK
+uv run openapi-spec-validator contracts/openapi/backend.v1.yaml
+contracts/openapi/backend.v1.yaml: OK
+```
+
+전체 pytest는 기본 temp 경로로 통과했다 (`--basetemp` 불필요).
+초기 대상 46개 테스트 실행에만 `--basetemp=.pytest-t103`를 사용했다 (46 passed).
+경고: pytest cache nodeids 저장 WinError 183; coverage 실행은 backend 미수입 경고도 출력했다.
+Makefile의 check 레시피에 해당하는 계약 검증/lint/import/mypy/크기/coverage 테스트를 직접 실행했다.
+`git diff --stat` 및 compose diff 확인: 수정 금지 구역 변경 없음, compose는 ollama 블록의 두 줄만 변경.
+
+### 스크립트 실행 / 정적 검사 구분
+
+- `uv run python scripts/provision_ollama.py --help`: exit 0, `[-h] [--base-url BASE_URL]` 출력.
+- provisioning 함수와 main은 respx로 실행: 이미 설치/신규 pull/HTTP 실패/pull 실패/설치 확인 실패를 검증.
+- `uv run python -c "import yaml; yaml.safe_load(open('docker-compose.yml', encoding='utf-8'))"`: exit 0, 출력 없음. compose는 정적 파싱만 수행.
+- Docker/Ollama 실행, 모델 다운로드는 하지 않았다.
+
+### 미실행 (Claude가 실행)
+
+- `test_ollama_embed_live.py` 실제 Ollama 통합 테스트: GPU/CPU 처리량, 장치 고착 회귀, 재로드, 1,500청크 유휴 색인.
+- `provision_ollama.py` 실제 daemon 대상 실행.
+- compose recreate 및 변경된 ollama 서비스 실행.
+- 생성 영향 측정: 임베딩 없음 / CPU / GPU의 TTFT p50/p95 및 tok/s 비교.
+
+### 카드와의 차이 / 남은 이슈
+
+- 요청대로 wire helper 파일을 추가했다. 정책 정의의 last_busy를 따르며 후반의 idle_since 오기는 적용하지 않았다.
+- live 테스트는 `/api/ps`의 size/size_vram으로 CPU/GPU 상주 상태를 확인하고 load_duration을 기록한다. CLI `ollama ps` 출력 수집은 Claude 실측에서 별도 수행한다.
+- 실측 결과는 주장하지 않는다. 새 의존성/인터페이스 변경/정책 변경 없음.
+
+### 리뷰 · 실서버 검증 (Claude, 2026-10-21)
+
+Codex는 Docker·실서버 접근이 없어 단위 테스트까지만 검증했다. 아래는 Claude가 실제 Ollama 0.40.7 + `llama-server`(RTX 4060)에서 실행한 결과다.
+
+**독립 재검증:** ruff · format · import-linter 5/5 · mypy(src 68파일) · 300줄 · pytest 233 passed (Codex 보고와 일치). 금지 구역·`ollama` 외 compose 블록 변경 없음.
+
+**실서버 통합 테스트 (`-m integration`, Codex가 쓴 4개 — 처음 실행): 4 passed**
+| 항목 | 측정 | 카드 기준 |
+|---|---|---|
+| GPU 처리량 (`num_gpu: 99`) | **115.2 chunks/s** (0.278 s/32청크), `/api/ps` GPU | ≥ 30 ✅ |
+| CPU 처리량 (`num_gpu: 0`) | **5.8 chunks/s** (5.53 s/32청크), `/api/ps` CPU | ≥ 4 ✅ |
+| 장치 전환 재로드 | 1.92 s, 1.57 s | ≤ 3 s ✅ |
+| 1500청크 `dynamic` 색인 (유휴) | **13.4 s** | ≤ 30 s ✅ (시뮬레이션 예측 13.2 s) |
+
+**`provision_ollama.py` 실행:** 모델 있음 → `pulled=False`로 건너뜀 / 모델 삭제 후 → 실제 pull **29 s**, `pulled=True`, 복원된 모델 ID `0a109f422b47` 동일 / 직후 재실행 → `pulled=False` (멱등).
+**알려진 제약:** `/api/pull`을 `stream: False`로 한 번에 기다리며 `timeout=600`이다. 느린 네트워크에서 10분을 넘기면 스크립트는 `ReadTimeout`으로 실패하지만 서버 쪽 다운로드는 계속되므로 재실행하면 이어서 완료된다 (멱등).
+
+**변이 테스트 (정책·어댑터 로직을 지키는지):** 15개 버그를 하나씩 심어 확인 — `min_dwell` 무시, `idle_grace` 무시, busy→CPU 미적용, `last_busy` 미갱신, `policy=cpu` 초기값, `gauge=None`을 busy로 처리, **`num_gpu` 생략(측정된 CPU 고착 버그)**, `embed_query`가 장치 전환, 문서 배치에서 `decide()` 생략, `decide()`를 배치당이 아닌 호출당 1회, 접두사 2종 제거, 정규화 생략, 차원 불일치 수용, 개수 불일치 수용.
+- **14/15가 처음부터 검출**됐다. **놓친 1건: `idle_grace_s` 완전 무시.** `min_dwell_s`(기본 10 s)가 `idle_grace_s`(기본 3 s)보다 커서 dwell 규칙이 grace 규칙을 가렸고, 두 안전장치가 겹쳐 하나가 고장나도 증상이 안 보였다. `min_dwell_s=0`으로 grace만 격리하는 `test_idle_grace_holds_cpu_on_its_own`을 추가해 검출 (15/15).
+- ⚠️ 첫 시도는 **무효**였다 (변이 하니스가 Git Bash의 `/tmp`를 Windows Python이 못 읽어 변이가 한 번도 적용되지 않았고 전부 "55 passed"로 나왔다). 하니스를 저장소 안 경로로 옮기고 "변이가 실제 적용됐는가"를 검증하도록 고친 뒤 재실행한 결과만 유효하다.
+
+**동시 색인기 플래핑 점검:** 기본값(`dwell 10`, `grace 3`)에서 생성이 계속 깜빡이는 가혹한 입력으로 시뮬레이션 — 색인기 1개 60요청 중 전환 1회, 2개 120요청 중 1회. `min_dwell_s`가 플래핑을 막는다 (`min_dwell_s=0`이면 20요청 중 9회 전환하지만 이는 방지 장치를 끈 설정).
+
+#### 후속 측정: 생성 중 임베딩 장치가 생성 성능에 주는 영향
+`llama-server`(공식 GGUF, 3B Q4_K_M) 생성 12회(최대 200토큰)를 임베딩 부하가 **동시에 계속 도는** 조건에서 쟀다. 조건 순서를 뒤집어 2라운드 (A=임베딩 없음, B=CPU 임베딩, C=GPU 임베딩).
+
+| 조건 | 생성 속도 (tok/s) | TTFT p50 | 동시 임베딩 처리 (32청크 배치 수) | VRAM |
+|---|---|---|---|---|
+| A 임베딩 없음 | 96.1 / 77.7 | 15 / 30 ms | — | 3.2~3.3 GiB |
+| B **CPU** 임베딩 | 89.7 / 86.5 | 18 / 22 ms | 5 / 1 | 3.2~3.7 GiB |
+| C **GPU** 임베딩 | **47.6 / 50.6** | 28 / 34 ms | **95 / 83** | 3.6 GiB |
+
+- **GPU 임베딩은 생성 속도를 약 절반으로 낮추고(≈96 → ≈49 tok/s), 같은 시간에 임베딩은 약 20배 더 처리한다.** TTFT는 영향이 작다(15~34 ms). VRAM은 모든 조건에서 안전하다 (OOM 위험 없음).
+- **CPU 임베딩의 생성 영향은 측정 잡음 안이다.** 같은 A 조건이 라운드 간 20% 변동(96.1 → 77.7)을 보여, B(86.5~89.7)와 A의 차이는 구분되지 않는다. "영향 없음"이 아니라 "이 측정으로는 구분 안 됨"이다. C의 약 50% 저하는 이 변동폭을 훨씬 넘어 확실하다.
+- **정책 판단 (사용자 결정 사항):** `dynamic`(현재 기본값, ADR-0003 D-3)은 생성 중 색인을 CPU(5.8 chunks/s)로 내려 생성 속도를 지킨다. `gpu`는 색인이 20배 빠르지만 그동안 토큰 출력 속도가 절반이다. 채팅 첫 토큰(TTFT)은 두 정책 모두 비슷하므로 차이는 **긴 답변의 출력 속도 대 색인 속도**의 교환이다. 기본값은 승인된 결정이라 유지했고, `ENGINE_EMBED_DEVICE_POLICY=gpu`로 언제든 바꿀 수 있다.
+
+**환경 메모:** 이 작업 중 `docker compose down llama-server`가 프로젝트 네트워크를 지워 중지돼 있던 `ollama` 컨테이너가 `network not found`로 기동하지 못했다. `--force-recreate`로 복구했고 모델은 명명된 볼륨에 보존됐다. 이후 서비스 정리는 `down` 대신 `stop`을 쓴다.
+
+**알려진 한계 / 후속:** 생성 중 임베딩 정책(`dynamic` vs `gpu`)의 최종 선택, 임베딩 서비스가 동시 호출할 때의 정책 상호작용(M1 T-107에서 `IndexingService`가 임베더를 동시에 쓰는지 확인).

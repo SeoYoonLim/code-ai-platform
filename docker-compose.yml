@@ -27,12 +27,12 @@ services:
   ollama:
     image: ollama/ollama:latest
     ports: ["11434:11434"]
-    # ADR-0002: RTX 4060 8GB 예산 (7B Q4_K_M · 8K ctx · KV q8_0 · 2 슬롯 ≈ 5.9GB)
+    # 임베딩 전용 (ADR-0003)
     environment:
       OLLAMA_FLASH_ATTENTION: "1"
       OLLAMA_KV_CACHE_TYPE: q8_0
       OLLAMA_NUM_PARALLEL: "2"
-      OLLAMA_MAX_LOADED_MODELS: "2"   # LLM(GPU) + 임베딩(CPU, num_gpu=0)
+      OLLAMA_MAX_LOADED_MODELS: "1"   # 임베딩 전용 (ADR-0003)
       OLLAMA_KEEP_ALIVE: 30m
     volumes:
       - ollama:/root/.ollama
