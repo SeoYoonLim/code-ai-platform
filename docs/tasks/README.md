@@ -6,7 +6,7 @@
 
 | ID | 제목 | 담당 | 의존 | 상태 | 우선순위 |
 |---|---|---|---|---|---|
-| [T-001](T-001-ci-pipeline.md) | CI 파이프라인 (GitHub Actions) | Codex | — | **ready** | P0 — S-01과 병행 |
+| [T-001](T-001-ci-pipeline.md) | CI 파이프라인 (GitHub Actions) | Codex | — | **done** | — |
 | [T-002](T-002-dockerfiles.md) | Backend / AI Engine Dockerfile | Codex | T-001 | ready | P1 |
 | [T-003](T-003-py-common-runtime.md) | py_common 런타임 (설정·로깅·request_id·Problem 핸들러) | Codex | T-001 | ready | P1 |
 | [T-004](T-004-web-scaffold.md) | Web 스캐폴딩 (Next.js) | Codex | T-001 | ready | P2 |

@@ -2,7 +2,7 @@
 
 - **담당:** Codex
 - **작성:** Claude · 2026-10-21
-- **상태:** ready (2026-10-21 해제: 원격 `https://github.com/SeoYoonLim/code-ai-platform` 연결, `main` push 완료)
+- **상태:** **done** (2026-10-21, PR #1 머지 완료, 122da80)
 - **후속 (사람):** CI가 처음 green이 되면 GitHub Settings → Branches에서 `main` 보호 규칙을 설정한다. required checks: `python`, `contracts` / PR 필수 / force push 금지
 - **우선순위:** P0. 이후 모든 PR이 이 CI를 통과해야 하므로 가장 먼저 한다
 - **관련 문서:** [AGENTS.md §5–6](../../AGENTS.md), [03-api-conventions.md §5](../architecture/03-api-conventions.md), [Makefile](../../Makefile)
@@ -169,3 +169,7 @@ lint-size: ## 파일당 300줄 규칙 검사 (생성물 제외)
   `make gen-clients`를 돌리면 항상 74줄짜리 FILES가 나온다.
 - **검증:** `git clone` 신규 클론으로 CI를 그대로 재현해 같은 64줄 삭제를 확인했다 (일관되고 재현 가능).
 - 조치: 74줄 FILES를 커밋. Python/TS 재생성은 CRLF 외 실질 차이 없음을 확인 후 되돌림.
+
+### 완료 (2026-10-21)
+- PR #1 머지 완료 (`122da80`, main)
+- 상태: **done**
