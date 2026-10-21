@@ -2,7 +2,7 @@
 
 - **담당:** Codex
 - **작성:** Claude · 2026-10-21
-- **상태:** ready
+- **상태:** **done** (2026-10-21, 리뷰 완료)
 - **우선순위:** P0 — M1의 모든 서비스 테스트가 이 Fake 위에서 돈다. 가장 먼저 한다 (GPU·네트워크 불필요)
 - **관련 문서:** [AGENTS.md](../../AGENTS.md), [CLAUDE.md](../../CLAUDE.md), 인터페이스 [llm.py](../../services/ai-engine/src/engine/core/interfaces/llm.py) · [embedder.py](../../services/ai-engine/src/engine/core/interfaces/embedder.py) · [vector_store.py](../../services/ai-engine/src/engine/core/interfaces/vector_store.py) · [activity.py](../../services/ai-engine/src/engine/core/interfaces/activity.py)
 
@@ -83,15 +83,15 @@ class TestInMemoryVectorStore(VectorStoreConformance):
 - 실제 어댑터가 정당한 이유로 어떤 규칙을 못 지키면 스위트를 고치지 말고 **카드에 `BLOCKED: interface`로 보고**한다.
 
 ## 수락 기준
-- [ ] Fake 3종이 해당 Protocol을 만족한다 (`isinstance(x, LLMProvider)` 등 `runtime_checkable` 확인 테스트 포함). `FakeLLMProvider`는 `ActivityGauge`도 만족.
-- [ ] 적합성 스위트 3개가 존재하고, Fake 3종이 전부 통과한다. 스위트 테스트 수: LLM ≥ 10, Embedder ≥ 7, VectorStore ≥ 14.
-- [ ] 스위트가 포함하는 규칙 (최소):
+- [x] Fake 3종이 해당 Protocol을 만족한다 (`isinstance(x, LLMProvider)` 등 `runtime_checkable` 확인 테스트 포함). `FakeLLMProvider`는 `ActivityGauge`도 만족.
+- [x] 적합성 스위트 3개가 존재하고, Fake 3종이 전부 통과한다. 스위트 테스트 수: LLM ≥ 10, Embedder ≥ 7, VectorStore ≥ 14.
+- [x] 스위트가 포함하는 규칙 (최소):
   - LLM: adapter 없음→base / 모르는 adapter→`AdapterNotFound` / stream 마지막 청크만 finish_reason·usage / index 연속 증가 / 소비자 중단 후 `in_flight` 복귀 / 예외 후 `in_flight` 복귀 / `health()`는 예외를 던지지 않음
   - Embedder: L2 정규화(‖v‖≈1, 허용오차 1e-6) / 순서·길이 보존 / 빈 입력 / 결정성 / `dimension`·`model_name` 일치
   - VectorStore: 멱등 upsert / 길이 불일치 `ValueError` / 차원 불일치 `VectorStoreError` / 없는 컬렉션 `CollectionNotFound` / top_k·정렬 / `where` AND·IN / `delete_by_paths` 개수 / `get_file_hashes` / `drop_collection` 후 재조회 `CollectionNotFound`
-- [ ] 생성한 Fake를 쓰는 **통합 smoke 테스트 1개**: `FakeEmbedder`로 청크 5개를 임베딩해 `InMemoryVectorStore`에 넣고 질의 → 가장 유사한 청크가 1위.
-- [ ] `make check` 통과 (mypy strict 포함). 파일당 300줄 이하 — 스위트가 길어지면 규칙별로 파일을 나눈다.
-- [ ] **작성한 테스트를 실제로 실행**해서 결과(통과 수)를 아래 "결과"에 적는다.
+- [x] 생성한 Fake를 쓰는 **통합 smoke 테스트 1개**: `FakeEmbedder`로 청크 5개를 임베딩해 `InMemoryVectorStore`에 넣고 질의 → 가장 유사한 청크가 1위.
+- [x] `make check` 통과 (mypy strict 포함). 파일당 300줄 이하 — 스위트가 길어지면 규칙별로 파일을 나눈다.
+- [x] **작성한 테스트를 실제로 실행**해서 결과(통과 수)를 아래 "결과"에 적는다.
 
 ## 금지 사항
 - `core/interfaces/**`, `core/models/**`, `core/errors.py`, `contracts/**` 수정 금지
@@ -109,4 +109,139 @@ Codex 샌드박스는 `.git`에 쓸 수 없어서 `git add`/`git commit`이 `ind
 변경은 작업 트리에 그대로 두고, 아래 "결과"에 변경 파일 목록과 검증 출력을 남긴다. 리뷰 후 Claude가 커밋·push한다.
 
 ## 결과
-<Codex 기록: 변경 파일, 스위트별 테스트 수, `make check` 결과>
+Implemented deterministic fakes, reusable Protocol suites, fixtures, and a network-free integration smoke.
+No dependencies added; no protected files changed; no git add/commit/push.
+
+Changed/created files (lines, including blanks/docstrings):
+
+- `services/ai-engine/src/engine/adapters/llm/fake.py`: 105
+- `services/ai-engine/src/engine/adapters/embeddings/fake.py`: 39
+- `services/ai-engine/src/engine/adapters/vectorstore/in_memory.py`: 83
+- `services/ai-engine/tests/conftest.py`: 45
+- `services/ai-engine/tests/conformance/llm_suite.py`: 85
+- `services/ai-engine/tests/conformance/embedder_suite.py`: 40
+- `services/ai-engine/tests/conformance/vector_store_suite.py`: 119
+- `services/ai-engine/tests/conformance/__init__.py`: 0
+- `services/ai-engine/tests/unit/adapters/__init__.py`: 0
+- `services/ai-engine/tests/unit/adapters/llm/__init__.py`: 0
+- `services/ai-engine/tests/unit/adapters/embeddings/__init__.py`: 0
+- `services/ai-engine/tests/unit/adapters/vectorstore/__init__.py`: 0
+- `services/ai-engine/tests/unit/adapters/llm/test_fake_llm.py`: 139
+- `services/ai-engine/tests/unit/adapters/embeddings/test_fake_embedder.py`: 38
+- `services/ai-engine/tests/unit/adapters/vectorstore/test_in_memory_store.py`: 61
+- `services/ai-engine/tests/unit/adapters/test_fakes_together.py`: 29
+- This task card: verification results and acceptance checkboxes.
+
+Tests actually collected and executed:
+
+| Suite | Conformance methods | Conformance cases | Fake-specific cases | Total |
+|---|---:|---:|---:|---:|
+| LLM | 13 | 13 | 15 | 28 |
+| Embedder | 8 | 8 | 3 | 11 |
+| VectorStore | 19 | 23 | 4 | 27 |
+| Network-free integration smoke | — | — | 1 | 1 |
+
+New tests: 67; existing tests: 59; total: 126 passed.
+Activity checks cover active concurrent calls, normal completion, final token delivery,
+consumer aclose(), unknown adapter, injected failures, timeout, and cancellation.
+
+Environment: Windows PowerShell; make unavailable. All uv commands used
+`UV_CACHE_DIR=C:\project\project1\.uv-cache` because the default uv cache was denied.
+Initial pytest runs passed with an existing .pytest_cache write warning. Final test runs used
+`PYTEST_ADDOPTS=-o cache_dir=.uv-cache/pytest-cache` and passed without warnings.
+No pytest temp-directory failure occurred; --basetemp was unnecessary.
+The smoke stays in the card's unit/adapters path and has no integration marker,
+so the default network-free run actually executes it.
+
+Actual verification output (all exit codes 0):
+
+```text
+$ uv run ruff check .
+All checks passed!
+```
+
+```text
+$ uv run ruff format --check .
+189 files already formatted
+```
+
+```text
+$ uv run lint-imports
+=============
+Import Linter
+=============
+
+
+---------
+Contracts
+---------
+
+Analyzed 81 files, 63 dependencies.
+-----------------------------------
+
+engine layers: api -> services -> core KEPT
+engine.core is framework-free KEPT
+engine services/api must not import adapters (DI in engine.main) KEPT
+engine adapters are independent KEPT
+backend and engine are independent (HTTP contract only) KEPT
+
+Contracts: 5 kept, 0 broken.
+```
+
+```text
+$ uv run mypy packages/py-common/src services/ai-engine/src services/backend/src
+Success: no issues found in 64 source files
+```
+
+```text
+$ uv run python scripts/check_file_lines.py --max 300
+(no output)
+```
+
+```text
+$ uv run pytest -q
+........................................................................ [ 57%]
+......................................................                   [100%]
+126 passed in 6.32s
+```
+
+```text
+$ uv run openapi-spec-validator contracts/openapi/engine.v1.yaml
+contracts/openapi/engine.v1.yaml: OK
+```
+
+```text
+$ uv run openapi-spec-validator contracts/openapi/backend.v1.yaml
+contracts/openapi/backend.v1.yaml: OK
+```
+
+```text
+$ uv run mypy services/ai-engine/tests/conftest.py services/ai-engine/tests/conformance services/ai-engine/tests/unit/adapters
+Success: no issues found in 13 source files
+```
+
+Makefile test-unit recipe also executed:
+`uv run pytest --cov=engine --cov=backend --cov=py_common --cov-report=term-missing`
+(exit 0): `126 passed in 6.69s`; `TOTAL 1099 statements, 8 missed, 99%`.
+The tracked-file line checker exits silently on success; all 16 new/changed Python files
+were additionally counted directly because untracked files are omitted by that checker.
+No new scripts, Dockerfiles, compose files, or CI settings were created.
+Optional mypy over the entire existing tests directory encounters pre-existing missing
+PyYAML stubs in contract/test_error_codes.py; the required source check and all 13 new
+test/package files pass strict mypy without ignores or casts.
+Open issues / deviations: none in this task's implementation or acceptance criteria.
+
+### 리뷰 (Claude, 2026-10-21)
+검사를 직접 재실행해 Codex 보고와 일치함을 확인했다 (ruff, format, import-linter 5/5, mypy strict, 300줄, pytest 126 → 127).
+
+**변이 테스트로 스위트의 검출력을 검증했다.** 구현에 버그를 하나씩 심고 스위트가 실패하는지 확인한 뒤 원본으로 복원했다 (복원 후 바이트 단위 동일 확인).
+
+| 스위트 | 심은 버그 | 검출 |
+|---|---|---|
+| LLM | `in_flight` 누수(generate/stream), finish_reason 위치, index 시작, 미등록 어댑터 | 5 / 5 |
+| VectorStore | 정렬 방향, top_k, AND/OR, 필터 반전, 삭제 개수, 점수 클램프, upsert 3종, 길이 불일치, 해시 | 11 / 11 (길이 불일치는 `zip(strict=True)` 방어선까지 제거해야 실패 — 이중 방어는 정상) |
+| Embedder | 정규화, 순서, 길이, 결정성, 질의≠문서, 차원 | 6 / 6 |
+
+**리뷰에서 추가한 것 1건:** 동시성 규칙("스트림 2개를 열면 `in_flight == 2`, 하나 닫으면 1")이 Fake 고유 테스트에만 있었다. 그 테스트는 Fake의 `latency_s`와 `asyncio.sleep` 패치에 의존해서 **T-102의 실제 어댑터에는 적용되지 않는다.** 훅 없이 동작하는 `test_concurrent_streams_are_counted_independently`를 재사용 스위트(`llm_suite.py`)에 올렸다. `in_flight`를 카운터가 아닌 busy 플래그로 구현한 버그를 이 테스트가 단독으로 잡는 것을 확인했다.
+
+**T-102·T-103 구현자 참고:** `in_flight`는 T-103 임베딩 스케줄링이 직접 의존한다. 스위트의 `in_flight` 규칙 5개(완료·중단·예외·동시성)를 반드시 통과시켜야 한다.
