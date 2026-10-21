@@ -137,3 +137,17 @@ ADR-0002 **D-5 기준**을 그대로 적용한다.
 - 호스트 VRAM 표본은 baseline/peak 968 MiB이며 GPU 워크로드 측정값이 아니다. 학습/변환 산출물은 없다.
 - spike Ruff/포맷, 계약 검증, import 계약, mypy, pytest(44 passed)는 통과했으나 전체 포맷 검사는 기존 T-003 카드에서 실패했다.
 - `.git/index.lock` 권한 거부로 staging/commit은 차단됐다. 상세 결과: [REPORT.md](../../ml/spikes/s01/results/REPORT.md).
+
+## 결과 (Claude, 2026-10-21)
+
+전체 보고서: [ml/spikes/s01/results/REPORT.md](../../ml/spikes/s01/results/REPORT.md)
+
+**요약:**
+1. 측정 중 치명적 버그 발견·수정: Dockerfile의 xformers가 CUDA 12.4용이라 cu126 이미지에서 비활성화되어, 학습이 비인과적(non-causal) attention으로 진행되고 있었다. 수정 후 전체 재측정.
+2. **D-5 판정: 7B는 학습 기준(①④) 실패, 3B는 전 항목 통과.** 7B 서빙은 문제없으나 학습이 8GB 안전 마진을 못 지킨다 (reserved 6.92GB > 6.5GB 가드).
+3. **Ollama가 LoRA ADAPTER를 완전히 제거**했다 (0.40.7, GGUF·safetensors 모두 거절). Plan A는 폐기.
+4. **Plan B(병합+양자화)와 `llama-server --lora`(신규 발견) 둘 다 동작 확인**, 카나리아 20/20.
+5. D5 CPU 임베딩 4.79 chunks/s — ADR-0002 기준(10) 미달.
+6. 상태: **done** (측정 완료, 판정은 ADR-0003으로 별도 승인 요청)
+
+변경 파일: `ml/spikes/s01/*` (Dockerfile 수정 3건, train_probe.py 패딩/배치 수정, check_causal.py 신규), `results/*.json`, `REPORT.md`.
