@@ -2,7 +2,7 @@
 
 - **담당:** Codex
 - **작성:** Claude · 2026-10-21
-- **상태:** ready (T-101 머지 후 착수 — `FakeLLMProvider.in_flight`와 `EmbedderConformance`를 쓴다)
+- **상태:** ready (T-101 `9056840`, T-102 `5f3e62c` 머지 완료)
 - **우선순위:** P1 — R1(10k LOC 색인 5분 미만)의 직접 요인
 - **관련 문서:** [ADR-0003 D-3](../adr/0003-base-model-and-lora-serving.md), 인터페이스 [embedder.py](../../services/ai-engine/src/engine/core/interfaces/embedder.py) · [activity.py](../../services/ai-engine/src/engine/core/interfaces/activity.py), 에러 [errors.py](../../services/ai-engine/src/engine/core/errors.py)
 
@@ -34,20 +34,42 @@ CPU 러너(`num_gpu: 0`)가 한 번 올라간 뒤에 `num_gpu`를 **생략한** 
 ## 정책 (Claude 설계 — 이대로 구현한다)
 
 ```
-mode ∈ {GPU, CPU}                       # 현재 Ollama 러너가 올라가 있는 장치. 시작 시 GPU.
+상태: mode ∈ {GPU, CPU}   (시작 시 GPU)
+      last_switch  = 마지막으로 mode 를 바꾼 시각   (시작 시 -inf)
+      last_busy    = 마지막으로 gauge.in_flight > 0 을 "관찰"한 시각   (시작 시 None)
 
-배치 시작 시 (embed_documents):
-  want = CPU  if gauge.in_flight > 0
-         GPU  if gauge.in_flight == 0 이 idle_grace_s 이상 지속됐을 때
-         그 외(유휴이지만 아직 grace 미만) → 현재 mode 유지
-  if want != mode and (now - last_switch) >= min_dwell_s:
-      mode = want; last_switch = now        # 다음 요청에서 num_gpu 값이 바뀌며 재로드(~2s)
-  요청은 항상 options.num_gpu = (99 if mode == GPU else 0) 로 보낸다
+decide()  — embed_documents 의 매 배치 시작 직전에 정확히 1번 호출. 그 외 시점에는 gauge 를 읽지 않는다.
+  now = clock()
+  busy = gauge.in_flight > 0           (gauge 가 None 이면 False)
+  if busy: last_busy = now
+  if   busy:                                             want = CPU
+  elif last_busy is None or now - last_busy >= idle_grace_s:   want = GPU
+  else:                                                  want = mode          # grace 미만: 유지
+  if want != mode and now - last_switch >= min_dwell_s:
+      mode = want; last_switch = now
+  return mode
 
-embed_query:
-  장치를 절대 바꾸지 않는다. 현재 mode의 num_gpu 값으로 보낸다.
-  (질의 1건은 CPU에서도 약 0.2초 — 전환 비용 2초를 낼 가치가 없다)
+모든 요청: options.num_gpu = 99 if mode == GPU else 0   (항상 명시 — 함정 1)
+
+embed_query:  decide() 를 호출하지 않는다. 현재 mode 의 num_gpu 로 보낸다. 장치를 바꾸지 않는다.
 ```
+
+**의미를 못 박는 이유 (시뮬레이션으로 확인함).** 어댑터는 게이지를 **배치 시작 시점에만** 관찰하므로 "유휴가 `idle_grace_s` 동안 지속"을
+연속 관찰로 구현할 수 없다 (그런 신호가 없다). 위 정의(`last_busy` = 마지막으로 *관찰된* 바쁨)로 구현한다. 배치 하나 안에서 시작해 끝난
+짧은 생성은 관찰되지 않는데, 그 생성은 이미 끝났으므로 GPU 로 돌아가도 해가 없다. 위험한 경우(배치 시작 시점에 생성이 진행 중)는
+`in_flight > 0`으로 정확히 관찰된다. `idle_since`(첫 유휴 관찰 시각) 방식으로 바꾸지 않는다 — 두 방식은 이 시나리오에서 같은 결과를 내지만
+`last_busy` 쪽이 상태가 하나 적고 테스트가 단순하다.
+
+**기본값의 실제 비용 (시뮬레이션, 32청크 배치 × 47 = 1500청크, 색인 중 4초짜리 생성 1회):**
+
+| 정책 | 색인 총시간 | CPU에 머문 시간 |
+|---|---|---|
+| 항상 GPU | 13.2 s | 0 |
+| `dynamic` (grace 3, dwell 10 — 기본값) | 27.6 s | 11.0 s |
+| `dynamic` (dwell 0) | 22.4 s | 5.5 s |
+
+`min_dwell_s=10`은 CPU 배치(≈5.5 s) 2개분을 강제하므로 짧은 생성 1회가 색인 시간을 약 2배로 만든다. R1(5분)에는 여유 있게 들어오므로
+ADR-0003 D-3 결정(`dynamic`)과 기본값은 유지하되, 후속 측정에서 이 비용을 실측으로 확인한다.
 
 | 파라미터 | 환경변수 | 기본값 | 이유 |
 |---|---|---|---|
@@ -59,6 +81,36 @@ embed_query:
 - `ActivityGauge`는 **생성자 인자로 주입**한다 (`gauge: ActivityGauge | None`). `None`이면 항상 유휴로 간주(= GPU). `LlamaServerProvider`와 직접 연결하는 것은 `engine/main.py`(M1 T-109)의 몫이다 — 이 카드에서 `adapters.llm`을 import하지 않는다.
 - 시계는 `time.monotonic`을 직접 부르지 말고 **주입 가능한 `clock: Callable[[], float]`** 로 받는다 (테스트에서 시간을 제어).
 
+## T-101 스위트 상속 규약 (확정 — 병합된 `EmbedderConformance`를 읽고 모킹 임베더로 시험한 결과)
+
+```python
+from tests.conformance.embedder_suite import EmbedderConformance
+
+
+class TestOllamaEmbedder(EmbedderConformance):
+    @pytest.fixture
+    def embedder(self, ...) -> Embedder:   # fixture 이름은 반드시 embedder
+        ...  # respx 로 모킹한 /api/embed 위의 OllamaEmbedder
+```
+
+접두사(`search_document:` / `search_query:`)는 스위트와 **충돌하지 않는다** — 스위트는 "질의 벡터 == 문서 벡터"를 요구하지 않는다 (그 규칙은 Fake 고유 테스트에만 있다).
+그러나 모킹 응답이 다음을 지키지 않으면 올바른 구현도 실패한다. 순진한 구현으로 직접 시험해 확인했다.
+
+1. **모킹 벡터의 길이 = 생성자의 `dimension`** (기본 768). 다른 길이(예: 16차원)를 돌려주면 `test_vectors_are_l2_normalized`와 `test_dimension_matches_vectors`가 실패한다. 카드의 "차원 불일치 → `EmbeddingError`" 규칙과도 맞물린다.
+2. **모킹 응답은 입력 텍스트에 대해 결정적**이어야 한다 (예: 텍스트의 sha256으로 만든 벡터). 고정 벡터 하나를 돌려주면 순서 보존 테스트가 아무것도 검증하지 못하고, 호출마다 달라지면 결정성 테스트가 실패한다. `side_effect` 핸들러에서 요청 본문 `input` 리스트를 읽어 그 길이만큼 벡터를 만든다.
+3. **모킹 서버가 정규화되지 않은 벡터를 돌려주는 경우를 포함한다.** 서버를 믿고 정규화를 생략한 구현은 `test_vectors_are_l2_normalized`에서 실패한다 (시험으로 확인함). 어댑터는 항상 정규화한다.
+4. 스위트는 빈 문자열 `""`도 임베딩한다. 접두사가 붙으므로 실제 요청은 빈 입력이 아니다. 모킹이 `input`을 그대로 되돌려 길이를 맞추게 하라 (영벡터 금지 — 정규화에서 0으로 나눈다).
+5. `embed_documents`는 `batch_size`(기본 32)로 쪼개 여러 번 호출한다. 스위트의 `["a","b","a"]` 같은 작은 입력은 한 배치지만, 70개 → 32/32/6 분할은 **별도 단위 테스트**로 검증한다 (스위트에 없다).
+
+**`in_flight` 연동 (T-102에서 확정):** `LlamaServerProvider.in_flight`는 (a) 스트림의 마지막 청크를 내보내기 **직전**에 감소하고 (b) 중단·예외·타임아웃 어느 경우에도 감소하며 (c) 느린 소비자가 있어도 서버 대기 구간 밖에서는 변하지 않는다. 그래서 `decide()`가 읽는 `in_flight > 0`은 "서버가 지금 생성 중"과 같다.
+단위 테스트의 게이지는 `FakeLLMProvider`(이미 `ActivityGauge`를 만족)나 `in_flight` 프로퍼티만 가진 작은 스텁을 쓴다. `adapters.llm`을 import하지 않는다 (import-linter) — `engine.core.interfaces.ActivityGauge`로만 받는다.
+
+**테스트 패키지 규약 (T-101·T-102와 동일, 재현·검증됨):** 새 테스트 디렉터리에 `__init__.py` (`tests/integration/__init__.py`는 T-102가 이미 만들었다) · 테스트 파일 이름은 저장소 전체에서 고유 (`test_ollama_embed.py`, `test_device_policy.py`, `test_ollama_embed_live.py`, `test_provision_ollama.py`) · 스위트는 `from tests.conformance.embedder_suite import ...`로만 가져온다.
+
+## 커밋 규칙 (중요)
+Codex 샌드박스는 `.git`에 쓸 수 없어서 `git add`/`git commit`이 `index.lock` 권한 오류로 실패한다 (T-001·S-01·T-101·T-102에서 확인). **커밋하지 않는다.** 변경은 작업 트리에 두고 "결과"에 변경 파일과 검증 출력을 남기면 Claude가 리뷰 후 커밋·push한다.
+**Docker·실서버가 필요한 검증은 Codex 범위가 아니다** (샌드박스에서 불가). 통합 테스트(`test_ollama_embed_live.py`)와 `provision_ollama.py` 실행, `docker-compose.yml`의 `ollama` 블록 변경은 *작성*까지만 하고, 실행하지 못한 항목은 "미실행 (Claude가 실행)"으로 나열한다.
+
 ## 대상 파일
 | 파일 | 내용 |
 |---|---|
@@ -67,7 +119,7 @@ embed_query:
 | `services/ai-engine/tests/unit/adapters/embeddings/test_device_policy.py` | 정책 단위 테스트 |
 | `services/ai-engine/tests/unit/adapters/embeddings/test_ollama_embed.py` | respx 기반 + `EmbedderConformance` 상속 |
 | `services/ai-engine/tests/integration/test_ollama_embed_live.py` | 실제 Ollama 대상 (`@pytest.mark.integration`) |
-| `docker-compose.yml` | **`ollama` 서비스 블록만**: 이제 임베딩 전용이므로 `OLLAMA_MAX_LOADED_MODELS: "1"`로 낮추고 LLM용 주석을 정리. `llama-server` 블록은 T-102 소관이라 건드리지 않는다 |
+| `docker-compose.yml` | **`ollama` 서비스 블록만**: 이제 임베딩 전용이므로 `OLLAMA_MAX_LOADED_MODELS: "1"`로 낮추고 LLM용 주석을 정리. `llama-server` 블록은 T-102 소관이라 건드리지 않는다 | **측정으로 확인됨 (2026-10-21):** `OLLAMA_MAX_LOADED_MODELS`가 `1`이든 `2`든 전환 동작은 동일하다 (상주 러너 1개, 전환 재로드 1.7~2.1 s). 따라서 `1`로 낮추는 것은 성능과 무관한 정리 작업이다 — 다시 조사하지 않는다. 낡은 주석(`# ADR-0002 … 7B …`, `# LLM(GPU) + 임베딩(CPU…)`)을 "임베딩 전용 (ADR-0003)"으로 고친다.
 | `scripts/provision_ollama.py` | `ollama pull nomic-embed-text` 멱등 실행 + 설치 확인 (이미 있으면 건너뜀) |
 
 ## 구현 명세
