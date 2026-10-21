@@ -20,6 +20,7 @@ sys.path.insert(0, str(base))
 from vram_monitor import gpu_mib, write_json
 
 part = os.environ['S01_PART'].lower()
+csize = int(os.environ.get('S01_C_SIZE', '7'))  # Part C/D base model size: 7 or 3
 if part not in ('all', 'b', 'a', 'c', 'd'):
     raise SystemExit('Usage: run_all.sh [all|b|a|c|d]')
 root = os.environ['S01_ROOT']
@@ -30,7 +31,8 @@ history = []
 
 def command(args, timeout=7200):
     try:
-        completed = subprocess.run(args, capture_output=True, text=True, timeout=timeout)
+        completed = subprocess.run(args, capture_output=True, text=True, encoding='utf-8',
+                                   errors='replace', timeout=timeout)
         row = dict(command=args, returncode=completed.returncode,
                    stdout=completed.stdout, stderr=completed.stderr)
     except (OSError, subprocess.TimeoutExpired) as error:
@@ -93,7 +95,7 @@ def training(size, seq, steps, name, canary=False, merged=False):
     output = '/repo/' + str(results / f'{name}.json').replace('\\','/')
     args = ['docker','run','--rm','--gpus','all','--shm-size','8g',
             '-v',root+':/repo:ro','-v',root+'/ml/spikes/s01:/repo/ml/spikes/s01',
-            '-v',root+'/.data/hf-cache:/hf-cache',
+            '-v','s01-hf-cache:/hf-cache',
             '-v',root+'/.data/s01-artifacts:/artifacts','s01-train:local',
             '/repo/ml/spikes/s01/train_probe.py','--config',
             f'/repo/ml/training/configs/qwen2.5-coder-{size}b-qlora-8gb.yaml',
@@ -140,60 +142,63 @@ if part in ('all','a','c'):
             if part in ('all','a'):
                 for name,size,seq in matrix_a: training(size,seq,30,name)
             if part in ('all','c'):
-                training(7,2048,60,'C-training',True)
-                training_result=json.loads((results/'C-training.json').read_text())
+                training(csize,2048,60,f'C-training-{csize}b',True)
+                training_result=json.loads((results/f'C-training-{csize}b.json').read_text())
                 if training_result['status']=='ok':
                     conversion = command(['docker','run','--rm',
-                        '-v',root+'/.data/hf-cache:/hf-cache',
+                        '-v','s01-hf-cache:/hf-cache',
                         '-v',root+'/.data/s01-artifacts:/artifacts','s01-train:local',
                         '/opt/llama.cpp/convert_lora_to_gguf.py',
-                        '--base-model-id','Qwen/Qwen2.5-Coder-7B-Instruct',
-                        '--outtype','f16','--outfile','/artifacts/canary.gguf','/artifacts/canary-7b'])
-                    write_json(results/'C.json',conversion)
+                        '--base-model-id',f'Qwen/Qwen2.5-Coder-{csize}B-Instruct',
+                        '--outtype','f16','--outfile',f'/artifacts/canary-{csize}b.gguf',
+                        f'/artifacts/canary-{csize}b'])
+                    write_json(results/f'C-{csize}b.json',conversion)
                     if conversion['returncode']:
-                        training(7,2048,60,'C-plan-B',True,True)
+                        training(csize,2048,60,f'C-plan-B-{csize}b',True,True)
                 else:
-                    blocked('C','Training failed; no adapter available',training=training_result)
+                    blocked(f'C-{csize}b','Training failed; no adapter available',training=training_result)
     finally:
         command(['docker','compose','start','ollama'])
 
 if part in ('all','d'):
-    artifact=Path('.data/s01-artifacts/canary.gguf')
+    artifact=Path(f'.data/s01-artifacts/canary-{csize}b.gguf')
     if artifact.exists():
-        command(['docker','cp',str(artifact),'code-ai-platform-ollama-1:/tmp/canary.gguf'])
-        modelfile=base/'Modelfile.canary'
-        modelfile.write_text('FROM '+tag(7)+'\nADAPTER /tmp/canary.gguf\nPARAMETER num_ctx 8192\n')
-        command(['docker','cp',str(modelfile),'code-ai-platform-ollama-1:/tmp/Modelfile.canary'])
-        created=command(['docker','compose','exec','-T','ollama','ollama','create','canary-v0',
-                         '-f','/tmp/Modelfile.canary'])
+        command(['docker','cp',str(artifact),f'code-ai-platform-ollama-1:/tmp/canary-{csize}b.gguf'])
+        modelfile=base/f'Modelfile.canary-{csize}b'
+        modelfile.write_text('FROM '+tag(csize)+f'\nADAPTER /tmp/canary-{csize}b.gguf\nPARAMETER num_ctx 8192\n')
+        command(['docker','cp',str(modelfile),f'code-ai-platform-ollama-1:/tmp/Modelfile.canary-{csize}b'])
+        created=command(['docker','compose','exec','-T','ollama','ollama','create',f'canary-{csize}b',
+                         '-f',f'/tmp/Modelfile.canary-{csize}b'])
         if created['returncode']==0:
-            probe('embed_probe.py','--output',results/'D5.json')
-            probe('adapter_probe.py','--output',results/'D.json')
+            probe('embed_probe.py','--llm',tag(csize),'--output',results/f'D5-{csize}b.json')
+            probe('adapter_probe.py','--base',tag(csize),'--model',f'canary-{csize}b',
+                  '--output',results/f'D-{csize}b.json')
         else:
-            blocked('D',created['stderr'])
+            blocked(f'D-{csize}b',created['stderr'])
     else:
-        for name in ('D1','D2','D3','D4'): blocked(name,'No converted adapter exists')
+        for name in ('D1','D2','D3','D4'): blocked(f'{name}-{csize}b','No converted adapter exists')
 
     # Numeric canary/format failures trigger a merged-artifact experiment, not a model decision.
-    d_path=results/'D.json'
+    d_path=results/f'D-{csize}b.json'
     d=json.loads(d_path.read_text()) if d_path.exists() else {}
     failed = (not artifact.exists() or d.get('status')!='ok' or
-              d.get('D1',{}).get('canary-v0',{}).get('rate',0)<0.95 or d.get('D3_rate',0)<0.9)
-    if failed and Path('.data/s01-artifacts/canary-7b/adapter_config.json').exists():
+              d.get('D1',{}).get(f'canary-{csize}b',{}).get('rate',0)<0.95 or d.get('D3_rate',0)<0.9)
+    if failed and Path(f'.data/s01-artifacts/canary-{csize}b/adapter_config.json').exists():
         stopped=command(['docker','compose','stop','ollama'])
         if stopped['returncode']==0:
             try:
-                training(7,2048,60,'C-plan-B',True,True)
+                training(csize,2048,60,f'C-plan-B-{csize}b',True,True)
             finally:
                 command(['docker','compose','start','ollama'])
-            files=list(Path('.data/s01-artifacts/canary-7b/merged').glob('*Q4_K_M.gguf'))
+            files=list(Path(f'.data/s01-artifacts/canary-{csize}b/merged').glob('*Q4_K_M.gguf'))
             if files:
                 command(['docker','cp',str(files[0]),'code-ai-platform-ollama-1:/tmp/merged.gguf'])
-                merged_file=base/'Modelfile.canary'
+                merged_file=base/f'Modelfile.merged-{csize}b'
                 merged_file.write_text('FROM /tmp/merged.gguf\nPARAMETER num_ctx 8192\n')
-                command(['docker','cp',str(merged_file),'code-ai-platform-ollama-1:/tmp/Modelfile.canary'])
+                command(['docker','cp',str(merged_file),f'code-ai-platform-ollama-1:/tmp/Modelfile.merged-{csize}b'])
                 created=command(['docker','compose','exec','-T','ollama','ollama','create',
-                                  'canary-merged','-f','/tmp/Modelfile.canary'])
+                                  f'canary-merged-{csize}b','-f',f'/tmp/Modelfile.merged-{csize}b'])
                 if created['returncode']==0:
-                    probe('adapter_probe.py','--model','canary-merged','--output',results/'D-plan-B.json')
+                    probe('adapter_probe.py','--base',tag(csize),'--model',f'canary-merged-{csize}b',
+                          '--output',results/f'D-plan-B-{csize}b.json')
 PY

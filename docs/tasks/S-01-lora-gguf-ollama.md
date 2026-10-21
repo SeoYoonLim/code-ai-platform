@@ -132,4 +132,8 @@ ADR-0002 **D-5 기준**을 그대로 적용한다.
 - `contracts/`, `services/`, `ml/training/configs/*.yaml` 수정 금지 (설정 변경이 필요하면 probe 인자로 덮어쓴다)
 
 ## 결과
-<Codex 기록>
+- `ml/spikes/s01/`에 Dockerfile, 6개 Python probe/도구, run_all.sh, README.md, VERSIONS.md와 results 원본/보고서를 작성했다.
+- Docker API named pipe 접근 거부로 A1–A5/B1–B7/C/D1–D5는 blocked로 기록했으며 모델·Plan 판정은 하지 않았다.
+- 호스트 VRAM 표본은 baseline/peak 968 MiB이며 GPU 워크로드 측정값이 아니다. 학습/변환 산출물은 없다.
+- spike Ruff/포맷, 계약 검증, import 계약, mypy, pytest(44 passed)는 통과했으나 전체 포맷 검사는 기존 T-003 카드에서 실패했다.
+- `.git/index.lock` 권한 거부로 staging/commit은 차단됐다. 상세 결과: [REPORT.md](../../ml/spikes/s01/results/REPORT.md).

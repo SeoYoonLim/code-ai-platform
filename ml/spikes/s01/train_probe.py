@@ -29,9 +29,11 @@ def run(args: argparse.Namespace, result: dict) -> None:
         result["allocated_gb"] = torch.cuda.max_memory_allocated() / 1e9
         from vram_monitor import gpu_mib
 
-        if reserved >= guard["max_vram_reserved_gb"] or gpu_mib() * 2**20 / 1e9 > 7.6:
+        if reserved >= guard["max_vram_reserved_gb"] or gpu_mib() * 2**20 / 1e9 > guard.get("max_system_vram_gb", 7.6):
             result["exceeded"] = True
-            raise RuntimeError("VRAM guard exceeded (reserved >= 6.5 GB or device > 7.6 GB)")
+            raise RuntimeError(
+                f"VRAM guard exceeded (reserved >= {guard['max_vram_reserved_gb']} GB or device > {guard.get('max_system_vram_gb', 7.6)} GB)"
+            )
 
     class Guard(TrainerCallback):
         def on_substep_end(self, args, state, control, **kwargs):
@@ -67,8 +69,10 @@ def run(args: argparse.Namespace, result: dict) -> None:
             else (exact_ids(tokenizer, args.seq, index))
         )
         ids = ids[: args.seq]
-        ids += [tokenizer.pad_token_id or tokenizer.eos_token_id] * (args.seq - len(ids))
-        mask = [int(token != tokenizer.pad_token_id) for token in ids] if args.canary else [1] * len(ids)
+        # Canary rows stay unpadded (batch size 1). Padding to a fixed length changed the logits of the
+        # real tokens in this stack (initial loss 6.05 vs 2.84 on identical tokens), so the adapter never
+        # learned the marker. Non-canary rows are exactly args.seq long, so nothing to pad there.
+        mask = [1] * len(ids)
         rows.append(
             {
                 "input_ids": ids,
@@ -80,8 +84,9 @@ def run(args: argparse.Namespace, result: dict) -> None:
     settings = TrainingArguments(
         output_dir=args.artifact + "/trainer",
         max_steps=args.steps,
-        per_device_train_batch_size=train["per_device_train_batch_size"],
-        gradient_accumulation_steps=train["gradient_accumulation_steps"],
+        # canary rows are unpadded and differ in length, so they cannot be stacked: batch 1, accumulate 8
+        per_device_train_batch_size=1 if args.canary else train["per_device_train_batch_size"],
+        gradient_accumulation_steps=8 if args.canary else train["gradient_accumulation_steps"],
         optim=train["optim"],
         learning_rate=train["learning_rate"],
         lr_scheduler_type=train["lr_scheduler_type"],
