@@ -2,7 +2,7 @@
 
 - **담당:** Codex
 - **작성:** Claude · 2026-10-21
-- **상태:** ready (T-101 `9056840`, T-102 `5f3e62c`, T-103 `5529bcd` 머지 완료)
+- **상태:** **done** (2026-10-21, 리뷰·실서버 검증 완료)
 - **우선순위:** P0 — T-107(`IndexingService`)과 T-108(`RagService`)이 이 위에서 동작한다
 - **관련 문서:** [ADR-0003](../adr/0003-base-model-and-lora-serving.md), [data-flow §3](../architecture/02-data-flow.md), 인터페이스 [vector_store.py](../../services/ai-engine/src/engine/core/interfaces/vector_store.py), 모델 [code.py](../../services/ai-engine/src/engine/core/models/code.py) · [retrieval.py](../../services/ai-engine/src/engine/core/models/retrieval.py), 에러 [errors.py](../../services/ai-engine/src/engine/core/errors.py)
 
@@ -102,7 +102,7 @@ class TestChromaVectorStore(VectorStoreConformance):
 - 임베딩은 `list[float]`로 넘긴다(numpy 불필요).
 
 ## 수락 기준
-- [ ] **`VectorStoreConformance`(T-101) 상속 테스트 전부 통과** — `FakeChromaClient` 위의 `ChromaVectorStore`로 `store` fixture 제공 (27개 규칙 전부, `xfail`/`skip` 금지)
+- [ ] **`VectorStoreConformance`(T-101) 상속 테스트 전부 통과** — `FakeChromaClient` 위의 `ChromaVectorStore`로 `store` fixture 제공 (23개 규칙 전부, `xfail`/`skip` 금지)
 - [ ] 위 "실측 동작" 19개 항목 중 단위 테스트가 가능한 것마다 **그 규칙을 검증하는 테스트가 있다** (표로 매핑해서 결과에 적는다). 특히:
   - 이름 변환: 유효한 이름은 그대로, `-` 끝·3자 미만은 변환, **변환이 단사임**(무작위 100개 이상 입력에서 충돌 0)
   - `CodeChunk` 왕복: `commit_sha=None`·값 있음 모두 동일하게 복원, 모든 `Language`/`ChunkKind` 열거형, 예약 키와 겹치는 사용자 `metadata`
@@ -133,4 +133,133 @@ Claude가 실제 Chroma 서버(위 digest, 영속 볼륨)에서 실행한다. �
 Codex 샌드박스는 `.git`에 쓸 수 없어서 `git add`/`git commit`이 `index.lock` 권한 오류로 실패한다 (T-001·S-01·T-101·T-102·T-103에서 확인). **커밋하지 않는다.** 변경은 작업 트리에 두고 "결과"에 변경 파일과 검증 출력을 남기면 Claude가 리뷰 후 커밋·push한다. **Docker·실서버가 필요한 검증은 Codex 범위가 아니다.**
 
 ## 결과
-<Codex 기록: 변경 파일, 테스트 수, 실측 항목↔테스트 매핑 표, `make check` 결과, 미실행 목록>
+구현 완료. 변경은 작업 트리에만 남겼다. git add/commit/push, Docker, 실제 서버 접속, 의존성 설치 없음.
+
+| 변경 파일 (services/ai-engine/ 기준) | 줄 수 | 테스트 케이스 |
+|---|---:|---:|
+| src/engine/adapters/vectorstore/chroma.py | 159 | — |
+| src/engine/adapters/vectorstore/chroma_codec.py (신규) | 101 | — |
+| src/engine/settings.py | 24 | — |
+| tests/unit/adapters/vectorstore/fake_chroma_client.py (신규) | 155 | helper |
+| tests/unit/adapters/vectorstore/test_chroma_store.py (신규) | 252 | 193 통과 (상속 suite 23 포함) |
+| tests/unit/adapters/vectorstore/test_chroma_boundary.py (신규) | 76 | 2 통과 |
+| tests/unit/test_engine_settings.py | 104 | 13 통과 (신규 1) |
+| tests/integration/test_chroma_live.py (신규) | 111 | 28 수집, 미실행 |
+| /docker-compose.yml | 103 | chroma image 한 줄만 변경 |
+| /docs/tasks/T-104-chroma-vectorstore.md | 228 | 본 기록 |
+
+공유 이름 변환, cosine 설정/점수, dimension 메타데이터 검증, 500개 배치,
+1000개 페이지, m_ 사용자 메타데이터 격리, None 생략, 오류 cause 보존/300자 제한을 구현했다.
+짧은 이름은 c_로 확장하고 기존 c_/e_ 접두사는 e_로 이스케이프한다.
+끝의 비영숫자 또는 x에는 x를 추가해 충돌을 막는다. 일반 유효 이름은 유지하며
+예약 접두사/끝 x의 변경은 단사성 확보에 필요하다. 6개 연산 모두 같은 변환을 사용한다.
+상속 suite 호출을 포함한 저장소 await에는 asyncio.wait_for로 5초 제한을 적용했다.
+
+### 실행한 검증 (실제 출력 요약)
+
+uv 기본 캐시 접근이 거부되어 이후 명령은 UV_CACHE_DIR=C:/project/project1/.uv-cache로 실행했다.
+새 스크립트/Dockerfile/CI는 없다. 새 Python 구현/Fake/단위 테스트는 실제 실행했다.
+
+| 명령 | 종료 코드 | 실제 출력 요약 |
+|---|---:|---|
+| uv run ruff check . | 0 | All checks passed! |
+| uv run ruff format --check . | 0 | 212 files already formatted |
+| uv run lint-imports | 0 | Analyzed 94 files, 113 dependencies. Contracts: 5 kept, 0 broken. |
+| uv run mypy packages/py-common/src services/ai-engine/src services/backend/src | 0 | Success: no issues found in 69 source files |
+| uv run python scripts/check_file_lines.py --max 300 | 0 | 출력 없음 |
+| uv run pytest -q | 0 | 430 passed, 37 deselected, 2 warnings in 29.19s |
+| uv run openapi-spec-validator contracts/openapi/engine.v1.yaml | 0 | contracts/openapi/engine.v1.yaml: OK |
+| uv run openapi-spec-validator contracts/openapi/backend.v1.yaml | 0 | contracts/openapi/backend.v1.yaml: OK |
+| uv run python -c "import yaml; yaml.safe_load(open('docker-compose.yml', encoding='utf-8'))" | 0 | 출력 없음; YAML 정적 파싱만 |
+| uv run mypy (신규 Fake/단위 테스트 2개/통합 테스트, 총 4파일) | 0 | Success: no issues found in 4 source files |
+| git diff --check | 0 | 공백 오류 없음 (Windows CRLF 안내만) |
+
+최종 pytest는 --basetemp 없이 성공했다. 앞서 --basetemp=.pytest-t104 실행은
+기존 scripts/tests/test_check_file_lines.py::test_traversal_fallback이 부모 Git 저장소를 발견해
+1 failed, 429 passed, 37 deselected였다. 기본 temp로 재실행한 위 결과는 전부 통과했다.
+경고 2개: chromadb asyncio.iscoroutinefunction deprecation, pytest cache 경로 생성 경고.
+줄 수 검사기는 tracked 파일만 보므로 신규 파일도 별도로 세어 모두 300줄 이하임을 확인했다.
+금지 구역 변경 없음. .env.example에는 ENGINE_CHROMA_URL이 이미 있어 변경하지 않았다.
+
+### 실측 규칙 → 테스트 매핑
+
+아래 이름은 test_chroma_store.py 기준. suite=VectorStoreConformance,
+boundary=test_chroma_boundary.py, live=test_chroma_live.py.
+
+| # | 실측 규칙 | 검증 테스트 |
+|---:|---|---|
+| 1 | 이름/단사성/모든 연산 | test_name_injectivity (500개 이상), test_mapping_every_operation (30개), boundary::test_fake_measured_wire |
+| 2 | 없는 컬렉션 | suite::test_missing_collection_raises, test_error_translation |
+| 3 | dimension 메타데이터/첫 add | test_dimension_metadata, suite::test_collection_dimension_mismatch_raises, boundary::test_fake_measured_wire; 재시작 보존은 live::test_live_restart_phases (미실행) |
+| 4 | 잘못된 차원 | suite::test_upsert_dimension_mismatch_raises / test_query_dimension_mismatch_raises, test_error_translation, boundary::test_fake_measured_wire |
+| 5 | 생성 시 cosine 설정 | test_empty_order_and_filters (실제 호출 configuration 검증) |
+| 6 | 1-cos 거리/점수/크기 불변 | boundary::test_fake_measured_wire (0/0.2929/2), suite::test_scores_clamp_negative_cosine |
+| 7 | 영벡터 | suite::test_zero_vector_scores_zero, boundary::test_fake_measured_wire |
+| 8 | CodeChunk/열거형 복원 | test_chunk_round_trip (모든 Language/ChunkKind) |
+| 9 | None 제거/복원 | test_chunk_round_trip (commit None/값), boundary::test_fake_measured_wire, test_empty_order_and_filters |
+| 10 | 사용자 메타데이터 충돌 | test_chunk_round_trip (path/kind/symbol/m_x/여러 scalar) |
+| 11 | $and | suite::test_where_equals_combines_with_and, test_empty_order_and_filters, boundary::test_fake_measured_wire |
+| 12 | $in/빈 tuple | suite::test_where_tuple_uses_in, test_empty_order_and_filters (미호출/존재 확인), boundary::test_fake_measured_wire |
+| 13 | 허용 필터/None 금지 | suite::test_unknown_filter_key_raises, test_empty_order_and_filters |
+| 14 | delete 실제 삭제 수 | suite::test_delete_by_paths_returns_count, test_mapping_every_operation, boundary::test_fake_measured_wire (중복 path) |
+| 15 | 페이지/마지막 hash/경고 | test_pagination_batching_and_last_hash (2500/1000+1000+500, hash 불일치 경고 경로) |
+| 16 | top_k 상한/0 이하 | suite::test_query_limits_top_k / test_upsert_is_idempotent, test_empty_order_and_filters, boundary::test_fake_measured_wire |
+| 17 | 빈 입력/없는 컬렉션 순서 | test_empty_order_and_filters, suite::test_missing_collection_raises, boundary::test_fake_measured_wire |
+| 18 | 길이→조회→전체 차원→저장 | test_empty_order_and_filters, boundary::test_dimension_check_prevents_partial_batch |
+| 19 | 오류 변환/cause/300자 | test_error_translation (5종 × 7개 경계), test_connect |
+
+배치는 test_pagination_batching_and_last_hash에서 1250개 → 500/500/250을 두 번 검증했다.
+
+### 미실행 (Claude가 실행)
+
+- live 통합 테스트 실행 (ENGINE_IT_CHROMA_URL 설정 후 -m integration).
+- 컨테이너 재시작 전후 영속성: ENGINE_IT_CHROMA_PHASE=write/read 및 동일한 고유
+  ENGINE_IT_CHROMA_PERSISTENCE_NAME으로 두 번 실행; Claude가 외부에서 재시작한다.
+  read 단계가 데이터/query/dimension 보존을 확인하고 컬렉션을 삭제한다.
+- 1500청크 × 768차원 scale 실행, query p95 측정, 전체 hash/삭제 개수 검증.
+- 실제 서버의 동일 VectorStoreConformance suite 실행 (테스트별 고유 namespace/종료 후 삭제).
+- compose chroma 블록 실행: YAML 파싱만 수행했으며 image 기동/포트 응답은 미검증.
+
+차이/남은 이슈: 카드의 “27개”와 달리 현재 merged suite는 실제 23개 케이스를 수집한다.
+전부 그대로 상속했고 skip/xfail은 없다. 300줄 분리를 위해 Fake 직접 검증용
+test_chroma_boundary.py를 추가했다. 계약/인터페이스 변경이나 의존성 추가는 없다.
+실제 서버와 Fake의 일치 여부, 영속성/성능은 위 미실행 검증에 남아 있다.
+테스트 임시 폴더 .pytest-t104/의 재귀 삭제는 자동 승인 검토에서 정책상 거부되어
+untracked 상태로 남아 있다. 구현 파일이 아니므로 커밋 대상에서 제외해야 한다.
+
+### 리뷰 · 실서버 검증 (Claude, 2026-10-21)
+
+Codex는 Docker·실서버 접근이 없어 가짜 클라이언트 위의 단위 테스트까지만 검증했다. 아래는 Claude가 실제 Chroma 서버(digest `sha256:1e0b73a1…`, 영속 볼륨)에서 실행한 결과다.
+
+**카드 정정:** 초판은 병합된 스위트가 "27개 규칙"이라고 썼으나 실제는 **23개**다 (27은 인메모리 Fake의 고유 테스트까지 센 값이었다).
+
+**독립 재검증:** ruff · format · import-linter 5/5 · mypy(src 69파일, 새 테스트 strict) · 300줄 · pytest 430 → 431 passed. 금지 구역·새 의존성 없음, compose 변경은 `chroma` 이미지 한 줄(digest 고정)뿐.
+
+**실서버 (`-m integration`, Codex가 쓴 28개 — 처음 실행): 27 passed, 1 skipped** (skip = 재시작 시나리오, 아래에서 직접 수행)
+| 항목 | 결과 |
+|---|---|
+| `VectorStoreConformance` 23개 규칙을 **진짜 서버**에 상속 | ✅ 전부 통과 |
+| 이름: `proj_a-`, `proj_b_`, 64자 `project_id` | ✅ 서버가 거부하지 않음 |
+| 규모 1500청크 × 768차원 | ✅ 질의 **p95 56 ms** (기준 < 1 s) |
+| `connect()` — `http://host:port`, 끝에 `/`, `127.0.0.1` 세 형태 | ✅ 모두 실제 연결·왕복 (단위 테스트가 못 타는 경로) |
+
+**가짜 클라이언트의 충실도 (이 카드의 핵심 보증):** 같은 시나리오 29가지(왕복, `commit_sha` None/값, 예약 키와 겹치는 사용자 메타데이터, `$and`/`$in`/빈 튜플/`None`/잘못된 키 필터, `top_k` 0과 −1, 차원 불일치, 영벡터, 중복 경로 삭제, 빈 입력과 없는 컬렉션의 순서, 드롭 후 조회 등)을 **진짜 서버와 `FakeChromaClient`에 똑같이 실행해 결과를 비교 → 차이 0건.** 한계: 비교 범위는 이 29가지다.
+
+**영속성 (컨테이너 `docker restart` 1.9 s):** 300청크/20파일/`commit_sha` None·값 혼재/사용자 메타데이터 → 재시작 후 `ensure_collection`으로 다시 열어도 파일 해시 20개 동일, 사용자 메타데이터·`commit_sha`(값과 None) 보존, **차원 보호가 재시작 후에도 유지**(다른 차원 거부), 반복 `ensure_collection`이 데이터를 지우거나 차원을 바꾸지 않음.
+⚠️ **동점 순서는 재시작 사이에 달라질 수 있다.** 재시작 전후 질의 1위가 바뀐 것을 조사했더니 데이터 손상이 아니라, 쿼리와 벡터가 **완전히 같은 청크 9개**가 모두 점수 1.0으로 동점이었기 때문이다 (재시작 없이 같은 질의를 10번 하면 항상 같은 5개). 근사 탐색(HNSW)의 동점 선택은 인덱스 상태에 따라 달라진다. 복붙된 코드·빈 함수는 임베딩이 같아 **실제로 동점이 생긴다.** 서비스 계층(T-108 `RagService`)이 재현 가능한 결과가 필요하면 동점을 `chunk_id`로 끊어야 한다.
+
+**이름 변환 단사성 전수 검사 (카드의 가장 위험한 요구):** 알파벳 `a c e x - _ . 1`의 **길이 1~6 모든 문자열 299,592개**에서 서로 다른 입력이 같은 이름이 되는 경우 **0건**, 출력이 서버 규칙을 어기는 경우 0건, `proj_abc`·`my.project` 같은 평범한 이름은 그대로. (예: `c`→`c_c`, `proj_a-`→`proj_a-x`, `proj_ax`→`proj_axx`.)
+
+**변이 테스트 (29개 버그를 하나씩 심어 테스트가 잡는지):** 이름 변환 누락 3곳, 빈 경로 조기 반환(스위트를 깨는 최적화), 점수 클램프·반전, 재정렬 제거, `top_k<=0`·빈 `$in` 서버 전송, 삭제 개수, 페이지네이션 2종, 배치, 차원 검증, 검사 순서, 사용자 메타데이터 접두사, `commit_sha` None 처리 2종, `$and`·`$in`·`None`·잘못된 키 필터, 이름 `x` 이스케이프, 짧은 이름 접두사, 차원 메타데이터 검사, 오류 변환·연쇄·300자 절단, 거리 공간(cosine) — 최종 **29/29 검출.** 처음에는 3건을 놓쳤다.
+
+**리뷰에서 찾아 고친 것 3건**
+1. **무한 루프가 CI를 멈출 수 있었다 (T-102와 같은 종류).** 페이지 오프셋이 전진하지 않는 버그를 심었더니 테스트가 **60초 상한까지 매달렸다.** `bounded_store`가 모든 연산을 `wait_for(…, 5)`로 감싸지만 `FakeChromaClient`가 `await`로 이벤트 루프에 **한 번도 양보하지 않아서**, 동기적으로 도는 코루틴에는 `wait_for`가 타임아웃을 발동할 수 없었다 — 상한이 있다는 착각이 보호를 대신하고 있었다. 가짜의 `async` 메서드 8개 첫 줄에 `await asyncio.sleep(0)`을 넣어 진짜 네트워크 호출처럼 양보하게 했고, 같은 버그가 **7초 만에 실패**하는 것을 확인했다.
+2. **재정렬 생략 버그를 못 잡았다.** 카드는 "서버 정렬을 가정하지 말고 점수 내림차순을 보장하라"고 했지만, 가짜가 항상 거리순으로 돌려줘서 어댑터가 정렬을 지워도 입력이 이미 정렬되어 있었다. 가짜에 `unsorted_results` 옵션(기본값은 기존 동작 그대로)을 추가하고 `test_query_does_not_rely_on_server_ordering`을 더해 해결했다 (원본에서 통과, 변이에서만 실패).
+3. 이름 변환 단사성이 코드 읽기로는 확신하기 어려워 **전수 검사**로 증명했다 (위).
+
+**잘못 의심했다가 확인으로 접은 것:** `connect()`가 `host`에 전체 URL을 넘기는 것이 버그일 것으로 의심했으나 실서버에서 세 URL 형태 모두 정상이었다.
+
+**알려진 한계 / 후속**
+- 전체 `chromadb`와 `chromadb-client`는 한 환경에 공존할 수 없어(실측) 단위 테스트는 가짜 클라이언트에 의존한다. 가짜의 충실도는 위 29가지 시나리오 비교와 실서버 스위트로만 보증된다. Chroma 업그레이드 시 `latest` 대신 digest 고정을 갱신할 때마다 이 비교를 다시 돌려야 한다.
+- 동점 순서의 비결정성은 서비스 계층 몫(위).
+- `get_file_hashes`는 같은 경로의 청크들이 다른 `content_hash`를 가지면 마지막 값을 쓰고 경고만 남긴다 (카드 규칙대로).

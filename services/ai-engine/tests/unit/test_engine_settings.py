@@ -92,3 +92,13 @@ def test_embedding_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     assert settings.embed_doc_prefix == "search_document: "
     assert settings.embed_query_prefix == "search_query: "
     assert str(settings.embed_url) == "http://localhost:11434/"
+
+
+def test_chroma_settings(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("ENGINE_CHROMA_URL", raising=False)
+    assert str(Settings(_env_file=None).chroma_url) == "http://localhost:8001/"
+    monkeypatch.setenv("ENGINE_CHROMA_URL", "https://chroma:8443")
+    assert str(Settings(_env_file=None).chroma_url) == "https://chroma:8443/"
+    monkeypatch.setenv("ENGINE_CHROMA_URL", "invalid")
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None)

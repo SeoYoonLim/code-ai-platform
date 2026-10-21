@@ -20,3 +20,5 @@ class Settings(BaseSettings):
     embed_min_dwell_s: float = Field(default=10.0, ge=0)
     embed_doc_prefix: str = "search_document: "
     embed_query_prefix: str = "search_query: "
+
+    chroma_url: AnyHttpUrl = AnyHttpUrl("http://localhost:8001")
