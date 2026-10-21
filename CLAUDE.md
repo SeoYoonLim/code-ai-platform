@@ -50,7 +50,8 @@ Codex의 규칙은 [AGENTS.md](AGENTS.md)에 있다. 작업은 **작업 카드**
 | D3 | Ports & Adapters (`core/interfaces` Protocol) | Ollama↔vLLM, Chroma↔타 VectorDB 교체 가능. GPU 없이 Fake로 테스트 |
 | D4 | Contract-first (OpenAPI 3.1 SSOT) | Python/TS/Dart 타입 자동 생성으로 드리프트 차단 |
 | D5 | tree-sitter 심볼 단위 청킹 | 줄 단위 분할 대비 검색 정확도 향상, 결과를 심볼에 매핑 가능 |
-| D6 | dev=Ollama, prod=vLLM | 로컬 개발 편의성 + 운영 시 멀티 LoRA 동시 서빙 |
+| D6 | dev=Ollama, prod=vLLM | 로컬 개발 편의성 + 운영 시 멀티 LoRA 동시 서빙. 8GB에서 dev vLLM은 3B만 가능 (ADR-0002 D-6) |
+| D9 | **개발 GPU 예산: RTX 4060 8GB** ([ADR-0002](docs/adr/0002-gpu-budget-rtx4060-8gb.md)) | 7B Q4_K_M 서빙(8K ctx, KV q8_0, 2 슬롯 ≈ 5.9GB) / QLoRA 학습 peak < 7GB / 미달 시 3B. 학습과 서빙은 배타적 (`make gpu-train-mode`) |
 | D7 | `ml/`은 workspace 제외 | torch/CUDA 버전 충돌을 서비스 환경과 격리 |
 | D8 | engine.core는 순수 Python(dataclass) | 프레임워크 비의존. Pydantic은 API 경계(생성 모델)에서만 |
 

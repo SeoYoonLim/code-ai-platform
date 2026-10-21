@@ -1,0 +1,39 @@
+# ADR-0002 D-3: RTX 4060 8GB QLoRA 기본 설정 (Primary)
+# 실행: cd ml && uv run python -m training.train_lora --config training/configs/qwen2.5-coder-7b-qlora-8gb.yaml
+model:
+  name: unsloth/Qwen2.5-Coder-7B-Instruct-bnb-4bit
+  serving_tag: qwen2.5-coder:7b-instruct-q4_K_M   # Ollama base (ADAPTER 적용 대상)
+  load_in_4bit: true
+  dtype: bfloat16
+  max_seq_length: 2048          # S-01에서 4096 가능 여부 측정
+
+lora:
+  r: 16
+  alpha: 32
+  dropout: 0.0
+  target_modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]
+  use_rslora: false
+
+train:
+  use_gradient_checkpointing: unsloth   # 활성값 RAM 오프로드
+  per_device_train_batch_size: 1
+  gradient_accumulation_steps: 8
+  optim: adamw_8bit
+  learning_rate: 2.0e-4
+  lr_scheduler_type: cosine
+  warmup_ratio: 0.03
+  num_train_epochs: 1
+  bf16: true
+  packing: false
+  seed: 42
+  logging_steps: 10
+  save_steps: 200
+
+guards:
+  max_vram_reserved_gb: 6.5     # 초과 시 중단 (T-063). 요구 <7GB − Windows 상주 1.03GB 반영 (ADR-0002)
+  max_system_vram_gb: 7.6       # nvidia-smi memory.used 상한
+  require_ollama_stopped: true  # make gpu-train-mode 선행
+
+export:
+  lora_gguf_outtype: f16        # convert_lora_to_gguf.py (Plan A)
+  merged_gguf_quant: q4_k_m     # Plan B 폴백

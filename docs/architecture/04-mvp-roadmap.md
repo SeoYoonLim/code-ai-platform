@@ -81,9 +81,9 @@ git 초기화는 착수 전(10/21)에 끝났다 (`806a236`). 카드: [docs/tasks
 | **S-01** | **Spike: 카나리아 LoRA → GGUF → Ollama `ADAPTER` 로드. 구조화 출력, 어댑터 전환 비용, 8GB VRAM 한계 측정 포함** | C + 사람 |
 | S-02 | Spike: tree-sitter Python/TS 노드 매핑, 청킹 지표, T-014용 fixture | X |
 
-**S-01이 가장 중요하다.** Qwen2.5 LoRA를 GGUF로 변환해 Ollama에서 로드하는 경로가 막히면 개발 환경도 vLLM으로 바꿔야 하고, D6 결정을 다시 해야 한다. W1 안에 결론을 낸다.
+**S-01이 가장 중요하다.** 개발 GPU가 RTX 4060 8GB이므로 ([ADR-0002](../adr/0002-gpu-budget-rtx4060-8gb.md)) S-01은 다음 세 가지를 W1 안에 결론 낸다. ① 7B QLoRA 학습이 peak < 7GB로 가능한가, ② 7B Q4 서빙이 8K full GPU로 예산 안에 들어오는가, ③ LoRA → GGUF → Ollama `ADAPTER` 경로가 동작하는가. 판정 결과(7B 또는 3B, Plan A/B/C)는 ADR-0003으로 확정한다.
 
-**완료 기준:** CI 통과, `make up && make dev` 후 두 서비스의 `/v1/health`가 200, S-01 결과를 ADR-0002로, S-02 결과를 리포트로 기록.
+**완료 기준:** CI 통과, `make up && make dev` 후 두 서비스의 `/v1/health`가 200, S-01 결과를 ADR-0003으로, S-02 결과를 리포트로 기록.
 
 ### M1. Engine Core — 색인 · 검색 · 생성 (W2–W3)
 
@@ -91,7 +91,7 @@ git 초기화는 착수 전(10/21)에 끝났다 (`806a236`). 카드: [docs/tasks
 |---|---|---|
 | T-010 | `adapters/llm/fake.py`, `embeddings/fake.py`, `vectorstore/in_memory.py`, 서비스 테스트용 fixture | 전체 |
 | T-011 | `adapters/llm/ollama.py` (generate, stream, health, 에러 변환) | `LLMProvider` |
-| T-012 | `adapters/embeddings/ollama_embed.py` (`nomic-embed-text`, 배치, L2 정규화, 문서/질의 prefix) | `Embedder` |
+| T-012 | `adapters/embeddings/ollama_embed.py` (`nomic-embed-text`, 배치, L2 정규화, 문서/질의 prefix, **`options.num_gpu=0` CPU 실행**) | `Embedder` |
 | T-013 | `adapters/vectorstore/chroma.py` | `VectorStore` |
 | T-014 | `adapters/parsing/treesitter_chunker.py` — Python, TypeScript + window 폴백 | `CodeChunker` |
 | T-015 | `adapters/registry_file.py` | `LoRAAdapterRegistry` |
@@ -160,7 +160,7 @@ git 초기화는 착수 전(10/21)에 끝났다 (`806a236`). 카드: [docs/tasks
 | T-060 | 수집기: Git 히스토리 리팩터링 커밋 (메시지 키워드 + diff 크기 필터), ruff/semgrep 자동 수정 쌍 |
 | T-061 | 정제: detect-secrets, 라이선스 필터, MinHash 중복 제거, 구문 검증 |
 | T-062 | 포맷터: `engine/prompts/*.jinja` 렌더로 ChatML 생성 (prompt parity), 저장소 단위 split, manifest |
-| T-063 | `train_lora.py`: Unsloth QLoRA (Qwen2.5-Coder-7B, r=16, α=32), config YAML |
+| T-063 | `train_lora.py`: Unsloth QLoRA, `ml/training/configs/*-qlora-8gb.yaml` 사용, **VRAM 가드 (peak reserved ≥ 6.5GB 또는 시스템 ≥ 7.6GB면 중단)**, Ollama 중지 확인 |
 | T-064 | `merge_and_export.py`: GGUF 어댑터 + Modelfile 생성 |
 | T-065 | `run_eval.py`: §2.3 게이트, registry 승격 |
 | T-066 | Backend 피드백 export (JSONL) → collectors/feedback |
@@ -171,7 +171,7 @@ git 초기화는 착수 전(10/21)에 끝났다 (`806a236`). 카드: [docs/tasks
 ### M7. Hardening · 릴리즈 (W8)
 
 - E2E 시나리오 테스트 (아래 §3) 자동화: Playwright(웹) + pytest(API)
-- 동시성: `OLLAMA_NUM_PARALLEL`을 튜닝하고, 채팅 2명 + 분석 잡 1개 동시 실행 시 p95 첫 토큰 시간 < 3s
+- 동시성 (8GB 예산, `OLLAMA_NUM_PARALLEL=2`): 채팅 1 + 분석 잡 1 동시 실행 시 p95 첫 토큰 시간 < 3s, 시스템 VRAM ≤ 7.5GB, `ollama ps` 100% GPU 유지
 - 보안 점검: 웹훅 HMAC, `RepoSource.local_path` 경로 탈출, Problem.detail 정보 노출, 시크릿 스캔
 - 관측성: request_id 전파, 잡 실패율 로그, Engine 토큰 사용량
 - 문서: 설치 가이드 (Windows + WSL2 GPU 포함), 운영 런북
@@ -187,7 +187,7 @@ git 초기화는 착수 전(10/21)에 끝났다 (`806a236`). 카드: [docs/tasks
 | R2 | GitHub push → 증분 색인 | 웹훅 수신부터 완료까지 30초 미만 |
 | R3 | 파일 분석 → Finding 목록 | 파일 1개 기준 60초 미만, 스키마 준수 ≥ 98% |
 | R4 | Finding → 리팩터 패치 | apply 성공률 ≥ 80% (LoRA) / ≥ 70% (base 폴백) |
-| R5 | 채팅 스트리밍 | 첫 토큰 p95 < 3s, 네트워크 끊김 후 재연결 시 누락이나 중복 0 |
+| R5 | 채팅 스트리밍 | 첫 토큰 p95 < 3s (채팅 1 + 잡 1 동시), 네트워크 끊김 후 재연결 시 누락이나 중복 0 |
 | R6 | 피드백 → 학습 데이터 export | 수락/수정 피드백이 JSONL로 재현 가능 (프롬프트 버전 + 컨텍스트) |
 | R7 | 품질 게이트 | `make check` + `make check-contracts` 통과, critical 보안 이슈 0 |
 
@@ -197,10 +197,11 @@ git 초기화는 착수 전(10/21)에 끝났다 (`806a236`). 카드: [docs/tasks
 
 | 리스크 | 영향 | 대응 |
 |---|---|---|
-| Ollama가 GGUF LoRA를 로드하지 못하거나 품질이 떨어짐 | M6 배포 경로 차단 | **W1 Spike S-01**. 실패 시 dev도 vLLM(WSL2)으로 전환 |
+| Ollama가 GGUF LoRA를 로드하지 못하거나 품질이 떨어짐 | M6 배포 경로 차단 | **W1 Spike S-01**. Plan B(병합 GGUF). 8GB에서 vLLM 전환(Plan C)은 3B만 가능 |
 | 7B 모델의 구조화 출력 품질 부족 | R3 미달 | S-01 M3으로 조기 측정. 프롬프트·스키마 단순화, 재시도, LoRA로 보정 |
 | GPU 1장에서 서빙과 학습 경합 | 개발 지연 | 학습은 야간 배치. 학습 중에는 FakeLLM으로 개발 |
-| **개발 GPU가 RTX 4060 8GB** (Q1 전제는 24GB) | 학습 시퀀스 길이와 서빙 컨텍스트 제한 | S-01에서 측정하고, 필요 시 클라우드 학습, 3B 모델, 컨텍스트 축소 중 선택 (사용자 승인) |
+| **개발 GPU가 RTX 4060 8GB** | 7B 학습/서빙 한계, 컨텍스트 8K 축소 | ADR-0002 사양 적용 (Q4_K_M, KV q8_0, QLoRA + gradient checkpointing, 임베딩 CPU). S-01 D-5 판정 미달 시 3B 전환 (설정 한 줄) |
+| 학습과 서빙이 GPU를 공유할 수 없음 | 학습 중 실 LLM 테스트 불가 | `make gpu-train-mode` / `gpu-serve-mode`, 학습은 야간 배치, 학습 중에는 `ENGINE_LLM_PROVIDER=fake` |
 | 학습 데이터 부족 또는 품질 저하 | 게이트 미통과 | 공개 OSS 저장소 히스토리로 보강 (라이선스 필터). MVP는 base 폴백 허용 |
 | Windows 개발 환경 (make, GPU Docker) | 온보딩 지연 | WSL2 가이드, Makefile 레시피를 `uv run` 직접 실행으로 대체 가능 |
 | 검색 품질 (recall@8 < 0.6) | 분석·채팅 품질 | M1에서 측정. 코드 특화 임베딩으로 교체 (Q2 재검토), 이후 reranker |

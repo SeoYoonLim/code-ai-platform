@@ -11,7 +11,7 @@ DART_GEN_DIR := apps/mobile/packages/api_client
 
 .PHONY: help install up down logs dev dev-engine dev-backend dev-worker dev-web dev-mobile \
         test test-unit test-integration test-web test-mobile lint lint-py lint-imports \
-        typecheck format validate-contracts gen-clients gen-py gen-ts gen-dart verify-clients check check-contracts clean
+        typecheck format validate-contracts gen-clients gen-py gen-ts gen-dart verify-clients check check-contracts clean gpu-status gpu-train-mode gpu-serve-mode
 
 help: ## 사용 가능한 타겟 목록
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}'
@@ -28,6 +28,19 @@ down: ## 전체 컨테이너 종료
 
 logs: ## 컨테이너 로그
 	docker compose logs -f --tail=100
+
+# --- GPU 모드 (ADR-0002: 학습과 서빙은 8GB VRAM을 공유할 수 없다) -----------------
+gpu-status: ## VRAM 사용량 + Ollama 로드 모델 (PROCESSOR 100% GPU 여부)
+	nvidia-smi --query-gpu=name,memory.used,memory.total,utilization.gpu --format=csv
+	-docker compose exec ollama ollama ps
+
+gpu-train-mode: ## 학습 전: Ollama 모델 언로드 + 컨테이너 중지
+	-docker compose exec ollama sh -c 'ollama ps | tail -n +2 | cut -d" " -f1 | xargs -r -n1 ollama stop'
+	docker compose stop ollama
+	@echo "학습 모드: ENGINE_LLM_PROVIDER=fake 로 개발하세요."
+
+gpu-serve-mode: ## 학습 후: Ollama 재기동
+	docker compose start ollama
 
 # --- 개발 서버 -----------------------------------------------------------------
 dev: up ## 인프라 + engine + backend 동시 실행

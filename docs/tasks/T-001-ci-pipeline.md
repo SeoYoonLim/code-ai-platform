@@ -2,7 +2,7 @@
 
 - **담당:** Codex
 - **작성:** Claude · 2026-10-21
-- **상태:** ready
+- **상태:** blocked: GitHub 원격 저장소가 연결되면 ready (CI 실행에 필요)
 - **우선순위:** P0. 이후 모든 PR이 이 CI를 통과해야 하므로 가장 먼저 한다
 - **관련 문서:** [AGENTS.md §5–6](../../AGENTS.md), [03-api-conventions.md §5](../architecture/03-api-conventions.md), [Makefile](../../Makefile)
 

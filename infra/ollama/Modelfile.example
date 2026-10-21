@@ -1,6 +1,8 @@
-# ml/training/merge_and_export.py 가 생성한 GGUF LoRA 어댑터를 Ollama에 등록하는 예시.
+# ml/training/merge_and_export.py 가 생성한 GGUF LoRA 어댑터를 Ollama에 등록하는 예시 (ADR-0002).
 # 사용: ollama create refactor-v1 -f /modelfiles/Modelfile.refactor-v1
-FROM qwen2.5-coder:7b
+# base 태그는 학습 설정(ml/training/configs/*.yaml)의 model.serving_tag 와 일치해야 한다.
+FROM qwen2.5-coder:7b-instruct-q4_K_M
 ADAPTER /modelfiles/adapters/refactor-v1.gguf
 PARAMETER temperature 0.2
-PARAMETER num_ctx 16384
+PARAMETER num_ctx 8192
+# num_gpu 는 고정하지 않는다 (Ollama 자동 추정, CPU+GPU hybrid 자동 오프로드)
