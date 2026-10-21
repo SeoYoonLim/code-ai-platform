@@ -39,8 +39,8 @@ S-02 (병행) ─────┘ → T-014 (M1 Chunker) 명세 입력
 
 | ID | 제목 | 담당 | 의존 | 상태 | 우선순위 |
 |---|---|---|---|---|---|
-| [T-101](T-101-fake-adapters.md) | Fake 어댑터 3종 + Protocol 적합성(conformance) 스위트 | Codex | — | **ready** | **P0 — M1 첫 작업** |
-| [T-102](T-102-llamaserver-provider.md) | `LlamaServerProvider` (llama-server `--lora`) + compose 서비스 | Codex | T-101 | ready | P0 |
+| [T-101](T-101-fake-adapters.md) | Fake 어댑터 3종 + Protocol 적합성(conformance) 스위트 | Codex | — | **done** (PR 대기) | — |
+| [T-102](T-102-llamaserver-provider.md) | `LlamaServerProvider` (llama-server `--lora`) + compose 서비스 | Codex | T-101 | **ready** | **P0 — 다음 작업** |
 | [T-103](T-103-ollama-embedder-scheduling.md) | `OllamaEmbedder` + GPU/CPU 동적 스케줄링 | Codex | T-101 | ready | P1 |
 | T-104 ~ T-109 | Chroma · tree-sitter 청커 · 레지스트리 · IndexingService · RagService · API | Codex | T-101~103 결과 | 카드 미작성 | — |
 
