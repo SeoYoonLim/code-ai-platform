@@ -95,4 +95,42 @@ data-flow §3.1의 헤더 형식(`# path:` / `# symbol:`)으로 청크 5개를 �
 스파이크를 하며 보게 된 것 중 우리(카드/인터페이스/data-flow §3.1)가 **놓쳤거나 틀렸거나 더 할 수 있는 것**을 보고서 마지막 절에 적는다. 예: 청킹 규칙과 `CodeChunk` 모델의 불일치, `chunk_id` 설계(결정성·충돌), 심볼 경로 규칙의 모호함, 증분 색인에 필요한 해시/범위 정보, 추가 언어(JS/Go/Java 등) 지원 비용, 성능 병목. **동의하지 않는 항목은 이유와 함께 명시**한다. 인터페이스 변경은 직접 하지 않고 제안만 한다 (Claude가 판단).
 
 ## 결과
-<Codex 기록>
+- 2026-10-23 재개: **AST 조사·실측·보고 완료. 아래 계약 충돌 및 전체 check는 미해결.**
+- 변경/생성: `scripts/spikes/s02_chunk_core.py`, `s02_chunk_probe.py`, `s02_ast_evidence.py`;
+  `docs/architecture/spikes/S-02-report.md`, `S-02-execution.md`,
+  `S-02-httpx.json`, `S-02-zod.json`, `S-02-fixture-check.json`, `S-02-ast-evidence.json`;
+  이 카드의 결과 절. 이전 직접 작성 fixture 8개 + expected 8개는 유지하고 실제 비교했다.
+- 네 문법 및 Parser/Query 로드 성공. Python 3.14.7/tree-sitter 0.26.0에서 Point 속성
+  반복 접근 시 native access violation(-1073741819)을 재현했다. byte offset+LF 테이블로
+  변경 후 두 저장소 순회 성공. 다른 CPython 조합에서의 원인 확정은 **미실행**.
+- 대체 캐시 시험 중 init의 base-path 해석을 잘못 예상하고 빈 캐시에서 로더를 호출해
+  새 하위 캐시가 생성됐다. 자동 다운로드 가능 경로를 호출한 실수이며 금지 준수를
+  주장할 수 없다. 네트워크 전송은 계측하지 않았다. 상세는 실행 기록 §1.
+  이후 모든 최종 실행은 존재 확인된 기본 캐시만 사용했다. 설치/clone 없음.
+- 실제 실행(모두 `.venv/Scripts/python.exe`, 종료 0):
+  - `scripts/spikes/s02_chunk_probe.py --check --json docs/architecture/spikes/S-02-fixture-check.json`
+    → fixture **8/8**, 손상 입력 **5/5** 전체 WINDOW, 첫 오류 MISSING=1 확인.
+  - `scripts/spikes/s02_ast_evidence.py docs/architecture/spikes/S-02-ast-evidence.json`
+    → 네 파서/Query, UTF-8 12bytes/5chars, LF/CRLF, 탭/끝 개행 없음/빈/주석,
+    200/201/220/221/251 경계, 중첩 클래스 본문 제거, 실제 헤더 5개 확인.
+  - `scripts/spikes/s02_chunk_probe.py .data/spike-repos/httpx --lang python --json docs/architecture/spikes/S-02-httpx.json`
+    → 60파일, 1234청크, 시간 p95 **4.58ms/1k LOC**, 줄 p95=62, WINDOW=2.76%, ID 충돌12.
+  - `scripts/spikes/s02_chunk_probe.py .data/spike-repos/zod --lang typescript --json docs/architecture/spikes/S-02-zod.json`
+    → 477파일, 1939청크, 시간 p95 **6.57ms/1k LOC**, 줄 p95=174, WINDOW=7.58%, ID 충돌1.
+- 수락 기준별:
+  1. 매핑의 ? 및 결정 7개: 충족, 보고서 §2.
+  2. 두 저장소 표/명령/SHA: 충족, §3 및 실행 기록 §3. SHA는 카드 값, 독립 재검증 미실행.
+  3. fixture 8개+expected+--check: 충족, §4 및 fixture-check JSON. expected 수정 없이 통과.
+  4. 줄 범위: **원본 span 30/30씩 100%, 누락0**. 렌더링 text의 literal 일치는
+     27/30·26/30이므로 그 해석의 수락 기준은 **미충족**. 클래스/MODULE 변환과 충돌, §5.
+  5. T-105 초안: 충족, 보고서 마지막.
+  6. scripts/spikes Ruff/포맷 및 모든 산출물 300줄 이하: 충족, 실행 기록 §5.
+  7. 실제 실행 증거/git 상태: 충족, 실행 기록. 직접 git 쓰기 명령 없음.
+  8. 추가 제안과 놓친 점: 충족, 보고서 §7. 실제 ID 충돌·MODULE4692줄·117개 syntax
+     WINDOW·해시3종·세대 전환·source/rendered 분리·문법 배포·검색 품질 평가 제안.
+- 품질 검사: OpenAPI2개/mypy69개/import계약5개 통과. pytest는 git init/add를 실행하는
+  `scripts/tests/test_check_file_lines.py`를 제외하고 `--basetemp=.data/pytest-s02-resumed`
+  지정, 종료0(**416 passed, 37 deselected**). 전체 Ruff609건/format은 기존 임시 파일 및
+  의도적 fixture로 실패. 전체 make check **미충족**; 보호 설정/테스트는 수정하지 않았다.
+- 남은 이슈: source/rendered 범위 계약 승인, ID 충돌 해결, MODULE/타입/callback 분할,
+  zod 목표 초과 및 문법 호환성 검토. 프로덕션 구현이나 보호 구역 변경은 하지 않았다.

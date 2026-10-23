@@ -1,0 +1,26 @@
+[
+  {
+    "kind": "module",
+    "symbol": "module",
+    "start_line": 1,
+    "end_line": 4
+  },
+  {
+    "kind": "class",
+    "symbol": "Box",
+    "start_line": 5,
+    "end_line": 8
+  },
+  {
+    "kind": "method",
+    "symbol": "Box.area",
+    "start_line": 7,
+    "end_line": 7
+  },
+  {
+    "kind": "function",
+    "symbol": "square",
+    "start_line": 9,
+    "end_line": 9
+  }
+]

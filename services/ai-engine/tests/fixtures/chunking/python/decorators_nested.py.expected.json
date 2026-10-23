@@ -1,0 +1,26 @@
+[
+  {
+    "kind": "function",
+    "symbol": "outer",
+    "start_line": 1,
+    "end_line": 5
+  },
+  {
+    "kind": "class",
+    "symbol": "Outer",
+    "start_line": 6,
+    "end_line": 10
+  },
+  {
+    "kind": "class",
+    "symbol": "Outer.Inner",
+    "start_line": 7,
+    "end_line": 10
+  },
+  {
+    "kind": "method",
+    "symbol": "Outer.Inner.run",
+    "start_line": 8,
+    "end_line": 10
+  }
+]

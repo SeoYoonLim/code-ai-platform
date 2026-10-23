@@ -1,0 +1,14 @@
+[
+  {
+    "kind": "module",
+    "symbol": "module",
+    "start_line": 1,
+    "end_line": 1
+  },
+  {
+    "kind": "function",
+    "symbol": "greet",
+    "start_line": 2,
+    "end_line": 3
+  }
+]
