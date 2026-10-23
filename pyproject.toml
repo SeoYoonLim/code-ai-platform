@@ -34,7 +34,7 @@ dev = [
 [tool.ruff]
 line-length = 110
 target-version = "py312"
-extend-exclude = ["**/generated/**"]
+extend-exclude = ["**/generated/**", "**/tests/fixtures/chunking/**"]  # 의도적 문법 오류·탭 fixture (S-02)
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "UP", "B", "A", "C4", "SIM", "RUF", "ASYNC", "PT", "TID"]
