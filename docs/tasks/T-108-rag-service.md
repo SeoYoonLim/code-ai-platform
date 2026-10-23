@@ -22,7 +22,7 @@
 - 이유: Chroma는 같은 벡터(동점)의 순서가 재시작 후 바뀔 수 있다(T-104 실측). 정렬을 저장소에 맡기지 않는다. `oversample`(기본 2)은 동점 묶음이 `top_k` 경계에 걸쳐도 같은 청크가 뽑히게 하는 여유다. 동점 묶음이 `top_k*oversample`보다 크면 비결정성이 남는다 — 한계로 문서화하고 테스트에서 그 경계를 명시한다.
 - `top_k <= 0`이면 저장소를 호출하지 않고 `[]`. 질의 임베딩은 **마지막 user 메시지**만 쓴다(대화 이력은 검색에 쓰지 않는다 — MVP).
 - 컬렉션이 없으면 `CollectionNotFound`가 그대로 올라온다(색인 전). 삼키지 않는다.
-- **`live`/`staged` 상태를 서비스가 알면 안 된다.** 교체 중인 파일의 미완성 청크를 거르는 것은 `VectorStore.query`의 계약이다(ADR-0005). 서비스 테스트는 포트만 가정하고, 이 보장의 실검증은 T-110(실서버)에서 Claude가 한다.
+- **저장소 내부 상태를 서비스가 알면 안 된다.** 검색은 `VectorStore.query`의 결과만 믿는다(쿼리 필터를 덧붙이지 않는다). 파일 교체 중 짧게 옛 잔여 청크와 새 청크가 함께 보일 수 있다([ADR-0005](../adr/0005-failure-safe-file-replacement.md) 개정 1) — 같은 `path`에서 줄 범위가 겹치므로 아래 3절의 겹침 제거가 자연스럽게 하나만 남긴다. 이 동작은 테스트로 고정한다(같은 path의 옛/새 청크가 겹치면 점수가 높은 쪽만 컨텍스트에 남음). 교체 중 질의의 실서버 검증은 T-110에서 Claude가 한다.
 
 ### 2. `search_text`는 검색용, `raw_code`는 프롬프트용
 - 프롬프트에는 **`chunk.raw_code`만** 들어간다. 헤더를 포함한 `search_text`는 임베딩 입력이므로 프롬프트에 넣지 않는다 (테스트: 프롬프트에 `# path:` 헤더 줄이 없고, CLASS 청크의 raw_code 전체가 들어간다).
@@ -60,17 +60,19 @@
 - 테스트: `tests/unit/services/test_rag_service.py`, `tests/unit/services/test_rag_prompt.py`(golden), `tests/unit/test_engine_settings.py` 확장, `tests/conftest.py`(격리), 컨테이너 테스트 확장
 
 ## 수락 기준
-- [ ] **결정성:** 같은 청크 5개가 동점일 때 저장소가 어떤 순서로 돌려줘도(여러 순열을 반환하는 스텁 저장소) `retrieve` 결과가 동일하고 `chunk_id` 오름차순이다. `top_k=2`면 가장 작은 두 `chunk_id`. 점수가 1e-9 차이로 사실상 같은 경우도 같은 규칙. 동점 묶음이 `top_k*oversample`를 넘는 경우의 한계를 명시한 테스트.
+**★ 표시는 핵심 수락 기준(확정)이다.** 하나라도 빠지면 완료가 아니다.
+
+- [ ] ★ **결정성(점수 소수 6자리 양자화 + `(−score, chunk_id)` 정렬):** 같은 청크 5개가 동점일 때 저장소가 어떤 순서로 돌려줘도(여러 순열을 반환하는 스텁 저장소) `retrieve` 결과가 동일하고 `chunk_id` 오름차순이다. `top_k=2`면 가장 작은 두 `chunk_id`. 점수가 1e-9 차이로 사실상 같은 경우도 같은 규칙. 동점 묶음이 `top_k*oversample`를 넘는 경우의 한계를 명시한 테스트.
 - [ ] `min_score`, `top_k<=0`(저장소 미호출), `where` 전달, 컬렉션 없음 → `CollectionNotFound` 전파.
-- [ ] **역할 분리:** 프롬프트에 `raw_code`만 있고 `search_text`의 `# path:` 헤더가 없다. 임베딩 호출 입력(질의)과 프롬프트가 섞이지 않는다. 클래스 청크는 raw_code 전체가 들어간다.
-- [ ] 겹침 제거(클래스⊃메서드, 첨부>유사도, exclude), `dropped_overlap`/`dropped_over_budget` 집계, 예산 초과 유사 블록은 건너뛰고 첨부 단독 초과는 `ContextTooLarge`(detail 포함).
+- [ ] ★ **역할 분리(`search_text`=검색용, `raw_code`=LLM 프롬프트용):** 프롬프트에 `raw_code`만 있고 `search_text`의 `# path:` 헤더가 없다. 임베딩 호출 입력(질의)과 프롬프트가 섞이지 않는다. 클래스 청크는 raw_code 전체가 들어간다.
+- [ ] ★ **예산 처리(자르지 않고 블록 단위로 건너뜀):** 예산 초과 유사 블록은 통째로 건너뛰고(`dropped_over_budget`) 코드를 중간에서 자르지 않는다. 첨부 블록이 단독으로 예산을 넘으면 조용히 건너뛰지 않고 `ContextTooLarge`(detail 포함). 겹침 제거(클래스⊃메서드, 첨부>유사도, exclude, 교체 중 옛 잔여/새 청크)와 `dropped_overlap` 집계.
 - [ ] `estimate_tokens` 경계값(0, 1, 3.5의 배수 근처, 한글/이모지 포함 문자열).
 - [ ] 대화 이력 트리밍: 오래된 메시지부터 버리고 마지막 user는 유지, 마지막 user만으로 초과 → `ContextTooLarge`, 예산 0 이하 → `ContextTooLarge`. 마지막이 user가 아니거나 빈 목록 → `ValueError`.
-- [ ] **스트림 계약:** `SourcesEvent`가 첫 이벤트(빈 소스 포함) → `TokenEvent` index 0,1,2… 연속 → `DoneEvent`가 마지막이고 `usage`/`finish_reason`이 provider 마지막 청크 값. 빈 delta 생략. 마지막 청크 없이 끝나면 `stream_incomplete`.
-- [ ] **취소/정리:** 중간에 `aclose()`·태스크 취소 후 `in_flight == 0`, provider 스트림이 닫힌다. `yield`를 감싼 타임아웃이 없다(코드 검토 항목).
+- [ ] ★ **스트림 계약(Sources → Tokens → Done):** `SourcesEvent`가 첫 이벤트(빈 소스 포함) → `TokenEvent` index 0,1,2… 연속 → `DoneEvent`가 마지막이고 `usage`/`finish_reason`이 provider 마지막 청크 값. 빈 delta 생략. 마지막 청크 없이 끝나면 `stream_incomplete`.
+- [ ] ★ **취소/정리(`in_flight` 즉시 정제):** 중간에 `aclose()`·태스크 취소 후 `in_flight == 0`, provider 스트림이 닫힌다. `yield`를 감싼 타임아웃이 없다(코드 검토 항목).
 - [ ] **어댑터 선택:** 명시 어댑터 → 그대로(미존재 `AdapterNotFound` 전파) / 미지정 + registry PRODUCTION(EXPLAIN) 존재 → 그 이름 사용 / 그 어댑터를 provider가 거부 → base로 1회 재시도 + 경고 로그 / registry가 `None` → base.
 - [ ] 프롬프트 golden 테스트(`chat.v1.jinja`): 블록 순서, `### path:start-end (symbol)` 제목, 인용 지침, 언어 태그 펜스.
-- [ ] 환경 격리: autouse 픽스처 동작 + `.env` 오염 회귀 테스트가 통과하고, 기존 `test_connect` 류가 로컬 `.env`와 무관하게 통과한다.
+- [ ] ★ **환경 격리(`Settings(_env_file=None)` + autouse 픽스처):** autouse 픽스처 동작 + `.env` 오염 회귀 테스트가 통과하고, 기존 `test_connect` 류가 로컬 `.env`와 무관하게 통과한다.
 - [ ] Container 확장 테스트(`rag`가 조립되고 `num_ctx`가 전달됨). `collection_for` 정의가 한 곳뿐이다(grep 검증).
 - [ ] 샘플 저장소를 InMemory 저장소 + Fake 임베더로 색인(T-107 서비스)한 뒤 `chat_stream`이 출처가 실제 `raw_code`와 일치하는 `SourcesEvent`를 내는 통합 성격 테스트 (T-110의 씨앗).
 - [ ] `make check` 통과 (ruff 린트·**포맷은 `docs` 포함 저장소 전체**, mypy strict, import-linter 5개 — `services`는 `adapters`를 import하지 않는다 —, 파일당 300줄).

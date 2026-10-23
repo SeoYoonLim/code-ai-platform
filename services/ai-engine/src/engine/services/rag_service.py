@@ -1,7 +1,7 @@
 """검색 + 컨텍스트 조립 + 근거 기반 채팅 유스케이스. 설계: docs/architecture/02-data-flow.md §4.1, 카드 T-108.
 
 서비스는 포트(core.interfaces)만 안다. 어떤 저장소·모델 서버인지는 container가 주입한다.
-`state == "live"` 같은 저장소 내부 상태는 모른다 — VectorStore 계약이 보장한다 (ADR-0005).
+저장소 내부 상태(교체 중 잔여 등)는 모른다 — VectorStore 계약과 겹침 제거가 다룬다 (ADR-0005).
 """
 
 from collections.abc import AsyncIterator, Callable, Sequence
