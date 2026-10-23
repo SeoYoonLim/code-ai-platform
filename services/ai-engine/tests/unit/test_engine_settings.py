@@ -102,3 +102,39 @@ def test_chroma_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ENGINE_CHROMA_URL", "invalid")
     with pytest.raises(ValidationError):
         Settings(_env_file=None)
+
+
+def test_t106_provider_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    from pathlib import Path
+
+    for key in ("LLM_PROVIDER", "EMBEDDER_PROVIDER", "VECTOR_STORE", "REGISTRY_PATH"):
+        monkeypatch.delenv("ENGINE_" + key, raising=False)
+    config = Settings(_env_file=None)
+    assert (config.llm_provider, config.embedder_provider, config.vector_store) == (
+        "llamacpp",
+        "ollama",
+        "chroma",
+    )
+    assert config.registry_path == Path("ml/registry/adapters.json")
+
+
+def test_t106_provider_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    from pathlib import Path
+
+    for key, value in {
+        "LLM_PROVIDER": "fake",
+        "EMBEDDER_PROVIDER": "fake",
+        "VECTOR_STORE": "memory",
+        "REGISTRY_PATH": "custom/t106.json",
+    }.items():
+        monkeypatch.setenv("ENGINE_" + key, value)
+    config = Settings(_env_file=None)
+    assert (config.llm_provider, config.embedder_provider, config.vector_store) == ("fake", "fake", "memory")
+    assert config.registry_path == Path("custom/t106.json")
+
+
+@pytest.mark.parametrize("key", ["LLM_PROVIDER", "EMBEDDER_PROVIDER", "VECTOR_STORE"])
+def test_t106_invalid_provider(key: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ENGINE_" + key, "invalid")
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None)
