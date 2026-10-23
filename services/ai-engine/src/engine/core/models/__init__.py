@@ -10,6 +10,18 @@ from engine.core.models.generation import (
     TokenChunk,
     TokenUsage,
 )
+from engine.core.models.indexing import (
+    IndexJob,
+    IndexMode,
+    IndexPhase,
+    IndexRequest,
+    IndexStats,
+    JobError,
+    JobProgress,
+    JobStatus,
+    ScanItem,
+    SkippedFile,
+)
 from engine.core.models.registry import AdapterInfo, AdapterStage, AdapterTask
 from engine.core.models.retrieval import MetadataFilter, MetadataValue, RetrievedChunk
 
@@ -24,12 +36,22 @@ __all__ = [
     "GenerationParams",
     "GenerationRequest",
     "GenerationResult",
+    "IndexJob",
+    "IndexMode",
+    "IndexPhase",
+    "IndexRequest",
+    "IndexStats",
+    "JobError",
+    "JobProgress",
+    "JobStatus",
     "Language",
     "MetadataFilter",
     "MetadataValue",
     "ProviderHealth",
     "RetrievedChunk",
     "Role",
+    "ScanItem",
+    "SkippedFile",
     "SourceFile",
     "TokenChunk",
     "TokenUsage",

@@ -106,9 +106,11 @@ class FakeCollection:
         include: list[str] | None = None,
         limit: int | None = None,
         offset: int = 0,
+        where: dict[str, object] | None = None,
     ) -> dict[str, object]:
         await asyncio.sleep(0)  # yield like a real network call so asyncio.wait_for can actually fire
-        rows = list(self.rows.items())[offset : offset + limit if limit is not None else None]
+        selected = [(k, v) for k, v in self.rows.items() if matches(v[2], where)]
+        rows = selected[offset : offset + limit if limit is not None else None]
         return {"ids": [r[0] for r in rows], "metadatas": [r[1][2] for r in rows]}
 
     async def delete(
@@ -140,6 +142,7 @@ class FakeChromaClient:
         self.collections: dict[str, FakeCollection] = {}
         # Autospec is the typed injection surface; behavior lives in this fake.
         self.client: AsyncClientAPI = create_autospec(AsyncClientAPI, instance=True)
+        self.client.get_max_batch_size = AsyncMock(return_value=5461)
         for name in ("get_collection", "get_or_create_collection", "delete_collection"):
             setattr(self.client, name, AsyncMock(side_effect=getattr(self, name)))
 
