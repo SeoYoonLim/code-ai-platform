@@ -17,8 +17,8 @@
 - 생성자: `FileAdapterRegistry(path: Path, *, base_model: str)`. **`base_model`은 `Settings.base_model`** 이다.
 - `list_adapters(stage=None)`: 파일의 모든 어댑터를 `stage`로만 거른다. **`base_model` 필터는 적용하지 않는다** (운영 도구가 전체를 봐야 한다).
 - `get(name)`: 없으면 `AdapterNotFound`.
-- `resolve(task)`: **`stage == PRODUCTION` 이고 `base_model`이 설정과 같은** 어댑터만 후보다. 이유: ADR-0003 v2에서 base가 3B → 7B로 바뀌었고 LoRA는 학습한 base 모델에서만 로드된다 (3B용 `canary-3b.gguf`는 7B에 올리면 안 된다). 후보가 0개면 `None`(호출측이 base 모델로 폴백). **후보가 2개 이상이면 `EngineError`(코드는 `registry_ambiguous`, `retryable=False`)** — 임의로 하나를 고르지 않는다 (등록 파이프라인이 task당 PRODUCTION 1개를 보장한다).
-- 파일 형식 `{"schema_version": 1, "adapters": [...]}`. `schema_version`이 1이 아니거나 필드가 없거나 타입이 틀리면 `EngineError`(`registry_invalid`), 메시지에 파일 경로·원인(최대 300자). `KeyError`·`ValueError`가 그대로 새면 안 된다.
+- `resolve(task)`: **`stage == PRODUCTION` 이고 `base_model`이 설정과 같은** 어댑터만 후보다. 이유: ADR-0003 v2에서 base가 3B → 7B로 바뀌었고 LoRA는 학습한 base 모델에서만 로드된다 (3B용 `canary-3b.gguf`는 7B에 올리면 안 된다). 후보가 0개면 `None`(호출측이 base 모델로 폴백). **후보가 2개 이상이면 `EngineError("...", detail={"reason": "registry_ambiguous", "task": ...})`** — 임의로 하나를 고르지 않는다 (등록 파이프라인이 task당 PRODUCTION 1개를 보장한다).
+- 파일 형식 `{"schema_version": 1, "adapters": [...]}`. `schema_version`이 1이 아니거나 필드가 없거나 타입이 틀리면 `EngineError("...", detail={"reason": "registry_invalid"})`, 메시지에 파일 경로·원인(최대 300자). `KeyError`·`ValueError`가 그대로 새면 안 된다.
 - 파일이 없으면 **빈 레지스트리**로 취급한다(개발 환경 편의). 단, 경로가 디렉터리이거나 읽기 오류면 `EngineError`.
 - **호출할 때마다 파일을 다시 읽는다** (캐시 없음 — 승격 직후 반영, 파일은 작다). 파일 I/O는 `asyncio.to_thread`.
 - `created_at`은 ISO-8601 문자열(타임존 포함)로 읽어 `datetime`으로 변환한다. `eval_scores`는 `dict[str, float]`.
@@ -64,8 +64,8 @@
 - 적합성: 레지스트리는 `LoRAAdapterRegistry` 계약(위 docstring)을 검사하는 `tests/conformance/registry_suite.py`를 만들고 `FileAdapterRegistry`가 상속한다 (Fake 레지스트리는 만들지 않는다 — 파일 기반이 이미 순수하다).
 
 ## 수락 기준
-- [ ] `RegistryConformance` 스위트 통과: 빈 파일/없는 파일, stage 필터, `get` 미존재 → `AdapterNotFound`, `resolve` 0개 → `None`, 1개 → 그 어댑터, **base_model 불일치(3B용 PRODUCTION)는 후보에서 제외**, 2개 이상 → `registry_ambiguous`.
-- [ ] 잘못된 JSON / `schema_version != 1` / 필드 누락 / 잘못된 `stage` 값 / 잘못된 날짜 → 모두 `registry_invalid` (원시 `KeyError`·`ValueError` 노출 금지). 경로가 디렉터리면 `EngineError`.
+- [ ] `RegistryConformance` 스위트 통과: 빈 파일/없는 파일, stage 필터, `get` 미존재 → `AdapterNotFound`, `resolve` 0개 → `None`, 1개 → 그 어댑터, **base_model 불일치(3B용 PRODUCTION)는 후보에서 제외**, 2개 이상 → `detail["reason"] == "registry_ambiguous"`.
+- [ ] 잘못된 JSON / `schema_version != 1` / 필드 누락 / 잘못된 `stage` 값 / 잘못된 날짜 → 모두 `detail["reason"] == "registry_invalid"` 인 `EngineError` (원시 `KeyError`·`ValueError` 노출 금지). 경로가 디렉터리면 `EngineError`.
 - [ ] 파일을 바꾸면 다음 호출에 즉시 반영된다 (캐시 없음 확인 테스트).
 - [ ] `build_container(Settings(llm_provider="fake", embedder_provider="fake", vector_store="memory"))`가 서버 없이 성공하고, `aclose()`는 멱등이다.
 - [ ] 기본 설정(실제 어댑터)은 **요청을 보내지 않고도 조립된다** (httpx 클라이언트는 지연 연결). 단위 테스트에서는 respx로 "조립 중 네트워크 호출 0"을 단언한다. Chroma `connect`는 서버가 필요하므로 단위 테스트에서는 주입 가능한 팩토리로 바꿔 끼운다.
@@ -82,7 +82,7 @@
 
 ## 금지 사항
 - **`.git`에 쓰지 않는다** (`git add/commit/push/checkout/branch/stash/reset` 금지). 파일만 수정하고 `git status --short`로 보고한다. 커밋은 Claude가 리뷰 후 한다.
-- `contracts/`, `core/interfaces/`, `core/models/`, `core/errors.py`, 루트 `pyproject.toml`, `uv.lock`, `.gitattributes`, `docker-compose.yml` 수정 금지. `registry_ambiguous`/`registry_invalid` 코드는 `EngineError`의 `code` 인자로 쓰고 새 예외 클래스를 만들지 않는다. 부족하면 제안에 쓴다.
+- `contracts/`, `core/interfaces/`, `core/models/`, `core/errors.py`, 루트 `pyproject.toml`, `uv.lock`, `.gitattributes`, `docker-compose.yml` 수정 금지. **새 예외 클래스와 새 에러 코드를 만들지 않는다.** 에러 코드는 `engine.v1.yaml`의 `EngineErrorCode`와 1:1이라(계약 테스트 `test_error_codes.py`) 추가하면 계약 변경과 클라이언트 재생성이 필요하다. 레지스트리 오류는 서버 설정 문제이므로 코드는 `EngineError`의 기본 `internal_error`로 두고, 구분은 `detail["reason"]`(`registry_invalid`/`registry_ambiguous`)로 한다. 이것으로 부족하다고 판단되면 제안에 쓴다.
 - 실제 서버가 필요한 확인(Chroma 실서버, Docker)은 하지 않는다 — live 테스트는 환경변수 없으면 skip. Claude가 실행한다.
 - 테스트·함수 이름은 파일 간 고유하게. pytest는 `--basetemp`를 저장소 밖(스크래치) 또는 `.data/` 아래로.
 
