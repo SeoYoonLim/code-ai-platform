@@ -12,7 +12,7 @@
 | [T-004](T-004-web-scaffold.md) | Web 스캐폴딩 (Next.js) | Codex | T-001 | ready | P2 |
 | [T-005](T-005-mobile-scaffold.md) | Mobile 스캐폴딩 (Flutter) | Codex | T-001 | ready | P2 |
 | [S-01](S-01-lora-gguf-ollama.md) | Spike: 8GB VRAM 학습·서빙 측정 + LoRA 서빙 경로 | Claude (Codex 스크립트 검증·수정·실행) | — | **done** → [ADR-0003](../adr/0003-base-model-and-lora-serving.md) | — |
-| [S-02](S-02-treesitter-chunker.md) | Spike: tree-sitter Python/TS 청킹 검증 | Codex | — | ready | P1 |
+| [S-02](S-02-treesitter-chunker.md) | Spike: tree-sitter Python/TS 청킹 검증 | Codex | — | **in-progress** (`task/S-02-treesitter-spike`) | P1 |
 
 상태: `todo → ready → in-progress → review → done` (막히면 `blocked`)
 
@@ -25,7 +25,7 @@ T-001 ─┬─ T-002 ─┐
        ├─ T-004  │
        └─ T-005  │
 S-01 (GPU, Docker) ┤ → ADR-0003: 7B/3B · Plan A/B/C 확정
-S-02 (병행) ─────┘ → T-014 (M1 Chunker) 명세 입력
+S-02 (병행) ─────┘ → T-105 (M1 Chunker) 명세 입력
 ```
 
 ### 브랜치 · PR 규칙
