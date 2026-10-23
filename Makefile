@@ -9,7 +9,7 @@ PY_GEN_DIR   := packages/py-common/src/py_common/generated
 WEB_GEN      := apps/web/src/lib/api/schema.d.ts
 DART_GEN_DIR := apps/mobile/packages/api_client
 
-.PHONY: help install up down logs dev dev-engine dev-backend dev-worker dev-web dev-mobile \
+.PHONY: help install fetch-grammars up down logs dev dev-engine dev-backend dev-worker dev-web dev-mobile \
         test test-unit test-integration test-web test-mobile lint lint-py lint-imports lint-size \
         typecheck format validate-contracts gen-clients gen-py gen-ts gen-dart verify-clients check check-contracts clean gpu-status gpu-train-mode gpu-serve-mode
 
@@ -17,8 +17,12 @@ help: ## 사용 가능한 타겟 목록
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
 # --- 설치 / 인프라 ------------------------------------------------------------
-install: ## Python workspace 의존성 설치 (uv)
+install: ## Python workspace 의존성 설치 (uv) + tree-sitter 문법
 	uv sync --all-packages
+	$(MAKE) fetch-grammars
+
+fetch-grammars: ## tree-sitter 문법 4종 다운로드·검증 (청커는 런타임에 다운로드하지 않는다). CI는 테스트 전에 실행
+	uv run python scripts/fetch_grammars.py
 
 up: ## 인프라 컨테이너 기동 (ollama, chroma, redis, postgres)
 	docker compose up -d ollama chroma redis postgres

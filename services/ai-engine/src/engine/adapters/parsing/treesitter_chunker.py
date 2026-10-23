@@ -13,7 +13,8 @@ from engine.core.models import ChunkKind, CodeChunk, Language, SourceFile
 
 def cached_parser(name: str) -> Parser:
     if name not in downloaded_languages():
-        raise ParseError(f"Grammar {name} absent from default cache; download disabled")
+        message = f"Grammar {name} absent from default cache; download disabled (run `make fetch-grammars`)"
+        raise ParseError(message)
     return get_parser(name)
 
 
