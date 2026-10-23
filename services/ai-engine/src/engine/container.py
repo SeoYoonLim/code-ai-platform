@@ -27,6 +27,7 @@ from engine.core.interfaces import (
     VectorStore,
 )
 from engine.services.indexing_service import IndexingService
+from engine.services.rag_service import RagService
 from engine.settings import Settings
 
 log = structlog.get_logger()
@@ -52,6 +53,7 @@ class Container:
     settings: Settings
     scanner: SourceScanner
     indexing: IndexingService
+    rag: RagService
     _resources: AsyncExitStack = field(default_factory=AsyncExitStack, repr=False, compare=False)
 
     async def aclose(self) -> None:
@@ -128,7 +130,10 @@ async def build_container(settings: Settings | None = None) -> Container:
             language_for_path=language_for_path, max_file_bytes=config.index_max_file_bytes
         )
         indexing = IndexingService(scanner, chunker, embedder, store)
-        return Container(llm, embedder, store, chunker, registry, config, scanner, indexing, resources)
+        rag = RagService(
+            embedder, store, llm, registry, num_ctx=config.num_ctx, oversample=config.rag_oversample
+        )
+        return Container(llm, embedder, store, chunker, registry, config, scanner, indexing, rag, resources)
     except BaseException:
         # Attempt every callback and preserve the original build failure.
         try:

@@ -23,14 +23,10 @@ from engine.core.models import (
     SkippedFile,
     SourceFile,
 )
+from engine.services.collections import collection_for
 
 CHUNK_POLICY_VERSION = "chunk-v1"
 log = structlog.get_logger()
-
-
-def collection_for(project_id: str) -> str:
-    """Return the project's vector collection name."""
-    return f"proj_{project_id}"
 
 
 class IndexingService:

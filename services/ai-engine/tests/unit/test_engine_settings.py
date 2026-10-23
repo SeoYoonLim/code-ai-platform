@@ -1,5 +1,7 @@
 """Engine environment settings."""
 
+from pathlib import Path
+
 import pytest
 from pydantic import ValidationError
 
@@ -138,3 +140,22 @@ def test_t106_invalid_provider(key: str, monkeypatch: pytest.MonkeyPatch) -> Non
     monkeypatch.setenv("ENGINE_" + key, "invalid")
     with pytest.raises(ValidationError):
         Settings(_env_file=None)
+
+
+def test_t108_settings_defaults_environment_and_validation(monkeypatch: pytest.MonkeyPatch) -> None:
+    config = Settings(_env_file=None)
+    assert (config.num_ctx, config.rag_oversample) == (16384, 2)
+    monkeypatch.setenv("ENGINE_NUM_CTX", "4000")
+    monkeypatch.setenv("ENGINE_RAG_OVERSAMPLE", "3")
+    config = Settings(_env_file=None)
+    assert (config.num_ctx, config.rag_oversample) == (4000, 3)
+    monkeypatch.setenv("ENGINE_RAG_OVERSAMPLE", "0")
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None)
+
+
+def test_t108_dotenv_pollution_is_isolated(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".env").write_text("ENGINE_LLM_PROVIDER=nonsense", encoding="utf-8")
+    assert Settings().llm_provider == "llamacpp"
+    assert Settings(_env_file=None).num_ctx == 16384

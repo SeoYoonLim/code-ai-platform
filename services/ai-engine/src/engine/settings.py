@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     embed_doc_prefix: str = "search_document: "
     embed_query_prefix: str = "search_query: "
 
+    num_ctx: int = Field(default=16384, gt=0)
+    rag_oversample: int = Field(default=2, ge=1)
+
     index_max_file_bytes: int = Field(default=524288, gt=0)
 
     chroma_url: AnyHttpUrl = AnyHttpUrl("http://localhost:8001")

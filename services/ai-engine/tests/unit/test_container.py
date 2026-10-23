@@ -148,3 +148,30 @@ async def test_t106_container_injected_factory_ownership(monkeypatch: pytest.Mon
     await built.aclose()
     await built.aclose()
     assert llm.closed == 2
+
+
+async def test_t108_container_rag_config_and_sample_sources():
+    from pathlib import Path
+
+    from engine.core.models import ChatMessage, ChatRequest, IndexRequest, JobStatus, Role, SourcesEvent
+    from engine.services.rag_service import RagService
+
+    config = t106_fake_config().model_copy(update={"num_ctx": 4096, "rag_oversample": 3})
+    async with await module.build_container(config) as built:
+        assert isinstance(built.rag, RagService)
+        assert (built.rag._num_ctx, built.rag._oversample) == (4096, 3)
+        root = Path(__file__).parents[1] / "fixtures/sample_repo"
+        job = await built.indexing.start(IndexRequest("sample", str(root)))
+        assert (await built.indexing.run(job.job_id)).status == JobStatus.SUCCEEDED
+        query = "function"
+        rows = await built.rag.retrieve("sample", query)
+        by_id = {r.chunk.chunk_id: r.chunk for r in rows}
+        request = ChatRequest("sample", (ChatMessage(Role.USER, query),))
+        events = [e async for e in built.rag.chat_stream(request)]
+        assert isinstance(events[0], SourcesEvent)
+        assert events[0].sources
+        for source in events[0].sources:
+            chunk = by_id[source.chunk_id]
+            text = (root / source.path).read_text(encoding="utf-8")
+            assert chunk.raw_code in text
+            assert (source.start_line, source.end_line) == (chunk.start_line, chunk.end_line)

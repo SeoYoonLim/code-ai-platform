@@ -1,0 +1,8 @@
+Answer using only the provided code. If you do not know, say you do not know.
+Cite evidence as [path:start-end].
+{% for block in blocks %}
+### {{ block.chunk.path }}:{{ block.chunk.start_line }}-{{ block.chunk.end_line }} ({{ block.chunk.symbol }})
+```{{ block.chunk.language.value }}
+{{ block.chunk.raw_code }}
+```
+{% endfor %}

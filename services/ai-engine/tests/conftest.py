@@ -1,5 +1,6 @@
 """Shared deterministic adapters and sample chunk factory."""
 
+import os
 from collections.abc import Callable
 
 import pytest
@@ -8,6 +9,15 @@ from engine.adapters.embeddings.fake import FakeEmbedder
 from engine.adapters.llm.fake import FakeLLMProvider
 from engine.adapters.vectorstore.in_memory import InMemoryVectorStore
 from engine.core.models import ChunkKind, CodeChunk, Language
+from engine.settings import Settings
+
+
+@pytest.fixture(autouse=True)
+def isolate_engine_settings(monkeypatch: pytest.MonkeyPatch) -> None:
+    for name in tuple(os.environ):
+        if name.startswith("ENGINE_"):
+            monkeypatch.delenv(name)
+    monkeypatch.setitem(Settings.model_config, "env_file", None)
 
 
 @pytest.fixture
