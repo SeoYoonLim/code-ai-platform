@@ -1,0 +1,44 @@
+[
+  {
+    "kind": "function",
+    "symbol": "add",
+    "start_line": 1,
+    "end_line": 1
+  },
+  {
+    "kind": "function",
+    "symbol": "named",
+    "start_line": 2,
+    "end_line": 2
+  },
+  {
+    "kind": "function",
+    "symbol": "default",
+    "start_line": 3,
+    "end_line": 3
+  },
+  {
+    "kind": "class",
+    "symbol": "Base",
+    "start_line": 4,
+    "end_line": 8
+  },
+  {
+    "kind": "method",
+    "symbol": "Base.field",
+    "start_line": 6,
+    "end_line": 6
+  },
+  {
+    "kind": "method",
+    "symbol": "Base.items",
+    "start_line": 7,
+    "end_line": 7
+  },
+  {
+    "kind": "function",
+    "symbol": "values",
+    "start_line": 9,
+    "end_line": 9
+  }
+]

@@ -2,10 +2,20 @@
 
 - **담당:** Codex
 - **작성:** Claude · 2026-10-21
-- **상태:** ready (T-001과 무관하게 착수 가능)
+- **상태:** in-progress (브랜치 `task/S-02-treesitter-spike`, 2026-10-23 위임)
 - **타임박스:** 1.5일
 - **산출물:** `scripts/spikes/s02_chunk_probe.py`, `docs/architecture/spikes/S-02-report.md`, 테스트 fixture
-- **후속:** 결과가 M1 **T-014 (`treesitter_chunker.py`)** 명세의 입력이 된다
+- **후속:** 결과가 M1 **T-105 (`treesitter_chunker.py`, 옛 이름 T-014)** 명세의 입력이 된다
+
+## 작업 규칙 (이번 위임에서 특히 강조)
+- **`.git`에 직접 쓰지 않는다.** `git add/commit/push/checkout/branch`를 실행하지 않는다 (샌드박스에서도 막혀 있다). 파일만 수정하고 끝나면 `git status --short`/`git diff --stat` 결과를 보고한다. 커밋은 Claude가 리뷰 후 한다.
+- **스크립트는 실제로 실행해서 출력을 보고서에 붙인다.** "돌아갈 것"이라고 가정하지 않는다. 라이브러리 동작(노드 타입 이름, 바이트/문자 오프셋 등)은 추측하지 말고 파서를 직접 돌려 확인한다.
+- **네트워크 없이 시작한다.** 측정 대상 저장소는 이미 받아 두었다 (clone 금지, 수정 금지):
+  - `.data/spike-repos/httpx` — `encode/httpx` 태그 `0.28.1`, 커밋 `26d48e0634e6ee9cdc0533996db289ce4b430177` (.py 60개)
+  - `.data/spike-repos/zod` — `colinhacks/zod` 태그 `v4.6.7`, 커밋 `b500a2ee95134f81d74da7911d7378dd2853d042` (.ts 477개; `node_modules`는 제외)
+- 의존성은 이미 설치돼 있다: `tree-sitter 0.26.0`, `tree-sitter-language-pack 1.22.1` (`.venv`). 새 패키지를 추가하지 않는다.
+- 테스트/함수 이름은 파일 간 중복 없이 고유하게 짓는다 (pytest 수집 충돌 방지).
+- pytest 임시 디렉터리 권한 오류가 나면 `--basetemp`를 저장소 내 비추적 경로(`.data/`)로 지정한다.
 
 ## 목표
 `CodeChunker` Protocol([chunker.py](../../services/ai-engine/src/engine/core/interfaces/chunker.py))과 data-flow §3.1 청킹 규칙이 실제 Python/TypeScript 코드에서 의도대로 동작하는지 확인한다. 구현 전에 **노드 타입 매핑**과 **경계 사례**를 확정하는 것이 목적이다.
@@ -39,7 +49,7 @@
 ### 3. 측정 (실제 저장소 2개)
 - Python: `encode/httpx` (태그 고정), TypeScript: `colinhacks/zod` (태그 고정). `/.data/spike-repos/`에 clone (커밋하지 않음)
 
-| 지표 | 목표 (T-014 수락 기준 후보) |
+| 지표 | 목표 (T-105 수락 기준 후보) |
 |---|---|
 | 파일당 파싱 + 청킹 시간 | 1k LOC당 < 50ms |
 | 청크 크기 분포 (줄 수 p50/p95/max) | p95 ≤ 120줄이면 window 분할 기준 200줄 유지 |
@@ -48,28 +58,79 @@
 | 커버리지 | (청크가 덮는 줄 수 + 공백/주석 줄) / 전체 줄 ≥ 99%. 누락 줄 없음 |
 | 문법 오류 내성 | 일부러 깨뜨린 파일 5개: ERROR 노드가 있어도 정상 심볼은 추출되는지, 아니면 전체 window 폴백인지 |
 
+### 3-1. 반드시 포함할 경계 사례 (측정 전 fixture로 먼저 확인)
+- **비ASCII/이모지가 있는 줄:** tree-sitter 오프셋은 **바이트** 단위다. `start_line`/`end_line`은 줄 번호지만 `text` 슬라이싱 시 바이트↔문자 혼동이 없는지 확인한다.
+- **CRLF 파일**과 **탭 들여쓰기**: 줄 수/범위가 LF 파일과 동일한가.
+- **빈 파일, 주석만 있는 파일, 끝 개행 없는 파일**
+- 같은 입력 → 같은 출력(순수·결정적) 확인: 두 번 실행해 `chunk_id` 목록이 동일해야 한다.
+- 심볼이 200줄 초과일 때 WINDOW 분할의 overlap 규칙 (인터페이스 docstring 참조)
+
 ### 4. 임베딩 헤더 미리보기
 data-flow §3.1의 헤더 형식(`# path:` / `# symbol:`)으로 청크 5개를 출력해 리포트에 싣는다.
 
 ## 산출물 명세
 - `scripts/spikes/s02_chunk_probe.py <repo_path> --lang python|typescript [--json out.json]`: 위 지표 출력
-- `docs/architecture/spikes/S-02-report.md`: 매핑표(확정안), 결정 항목별 권고와 근거, 측정 결과, T-014 수락 기준 제안
-- `services/ai-engine/tests/fixtures/chunking/`: T-014 테스트용 fixture
+- `docs/architecture/spikes/S-02-report.md`: 매핑표(확정안), 결정 항목별 권고와 근거, 측정 결과, T-105 수락 기준 제안
+- `services/ai-engine/tests/fixtures/chunking/`: T-105 테스트용 fixture
   - `python/basic.py`, `python/decorators_nested.py`, `python/syntax_error.py`
+  - `python/unicode_crlf.py` (비ASCII + CRLF 사례. `.gitattributes`가 줄바꿈을 바꾸지 않도록 fixture만 `-text`로 지정하는 안을 **제안만** 한다. `.gitattributes`는 수정하지 않는다)
   - `typescript/basic.ts`, `typescript/exports_arrows.ts`, `typescript/component.tsx`, `typescript/syntax_error.ts`
   - 각 fixture의 기대 청크 목록 `*.expected.json` (`kind`, `symbol`, `start_line`, `end_line`)
 
 ## 수락 기준
 - [ ] 매핑표의 모든 "?" 항목과 결정 항목 7개에 권고안과 근거가 있음
 - [ ] 두 저장소 측정 결과가 표로 정리됨 (실행 명령과 커밋 SHA 포함)
-- [ ] fixture 7개와 expected.json이 있고, probe 스크립트 출력이 expected와 일치 (스크립트에 `--check` 모드)
+- [ ] fixture 8개와 expected.json이 있고, probe 스크립트 출력이 expected와 일치 (스크립트에 `--check` 모드)
 - [ ] 줄 범위 정확도 100%, 누락 줄 0
-- [ ] 리포트 마지막에 T-014 수락 기준 초안
+- [ ] 리포트 마지막에 T-105 수락 기준 초안
 - [ ] `ruff check scripts/spikes` 통과, 파일당 300줄 이하
+- [ ] 보고서에 **실행 증거**(명령과 실제 출력)가 있고, 최종 응답에 `git status --short` 결과가 있음 (`.git` 쓰기 없음)
+- [ ] 보고서에 "**추가 제안과 놓친 점**" 절이 있음 (아래 참조)
 
 ## 금지 사항
 - `core/interfaces/chunker.py`, `core/models/code.py` 수정 금지. 모델이 부족하면 리포트의 "인터페이스 변경 제안" 절에 쓴다 (Claude가 판단)
 - 외부 저장소 코드를 fixture로 복사하지 않는다 (라이선스). fixture는 직접 작성한다
 
+## 추가 제안과 놓친 점 (Codex에게 요청)
+스파이크를 하며 보게 된 것 중 우리(카드/인터페이스/data-flow §3.1)가 **놓쳤거나 틀렸거나 더 할 수 있는 것**을 보고서 마지막 절에 적는다. 예: 청킹 규칙과 `CodeChunk` 모델의 불일치, `chunk_id` 설계(결정성·충돌), 심볼 경로 규칙의 모호함, 증분 색인에 필요한 해시/범위 정보, 추가 언어(JS/Go/Java 등) 지원 비용, 성능 병목. **동의하지 않는 항목은 이유와 함께 명시**한다. 인터페이스 변경은 직접 하지 않고 제안만 한다 (Claude가 판단).
+
 ## 결과
-<Codex 기록>
+- 2026-10-23 재개: **AST 조사·실측·보고 완료. 아래 계약 충돌 및 전체 check는 미해결.**
+- 변경/생성: `scripts/spikes/s02_chunk_core.py`, `s02_chunk_probe.py`, `s02_ast_evidence.py`;
+  `docs/architecture/spikes/S-02-report.md`, `S-02-execution.md`,
+  `S-02-httpx.json`, `S-02-zod.json`, `S-02-fixture-check.json`, `S-02-ast-evidence.json`;
+  이 카드의 결과 절. 이전 직접 작성 fixture 8개 + expected 8개는 유지하고 실제 비교했다.
+- 네 문법 및 Parser/Query 로드 성공. Python 3.14.7/tree-sitter 0.26.0에서 Point 속성
+  반복 접근 시 native access violation(-1073741819)을 재현했다. byte offset+LF 테이블로
+  변경 후 두 저장소 순회 성공. 다른 CPython 조합에서의 원인 확정은 **미실행**.
+- 대체 캐시 시험 중 init의 base-path 해석을 잘못 예상하고 빈 캐시에서 로더를 호출해
+  새 하위 캐시가 생성됐다. 자동 다운로드 가능 경로를 호출한 실수이며 금지 준수를
+  주장할 수 없다. 네트워크 전송은 계측하지 않았다. 상세는 실행 기록 §1.
+  이후 모든 최종 실행은 존재 확인된 기본 캐시만 사용했다. 설치/clone 없음.
+- 실제 실행(모두 `.venv/Scripts/python.exe`, 종료 0):
+  - `scripts/spikes/s02_chunk_probe.py --check --json docs/architecture/spikes/S-02-fixture-check.json`
+    → fixture **8/8**, 손상 입력 **5/5** 전체 WINDOW, 첫 오류 MISSING=1 확인.
+  - `scripts/spikes/s02_ast_evidence.py docs/architecture/spikes/S-02-ast-evidence.json`
+    → 네 파서/Query, UTF-8 12bytes/5chars, LF/CRLF, 탭/끝 개행 없음/빈/주석,
+    200/201/220/221/251 경계, 중첩 클래스 본문 제거, 실제 헤더 5개 확인.
+  - `scripts/spikes/s02_chunk_probe.py .data/spike-repos/httpx --lang python --json docs/architecture/spikes/S-02-httpx.json`
+    → 60파일, 1234청크, 시간 p95 **4.58ms/1k LOC**, 줄 p95=62, WINDOW=2.76%, ID 충돌12.
+  - `scripts/spikes/s02_chunk_probe.py .data/spike-repos/zod --lang typescript --json docs/architecture/spikes/S-02-zod.json`
+    → 477파일, 1939청크, 시간 p95 **6.57ms/1k LOC**, 줄 p95=174, WINDOW=7.58%, ID 충돌1.
+- 수락 기준별:
+  1. 매핑의 ? 및 결정 7개: 충족, 보고서 §2.
+  2. 두 저장소 표/명령/SHA: 충족, §3 및 실행 기록 §3. SHA는 카드 값, 독립 재검증 미실행.
+  3. fixture 8개+expected+--check: 충족, §4 및 fixture-check JSON. expected 수정 없이 통과.
+  4. 줄 범위: **원본 span 30/30씩 100%, 누락0**. 렌더링 text의 literal 일치는
+     27/30·26/30이므로 그 해석의 수락 기준은 **미충족**. 클래스/MODULE 변환과 충돌, §5.
+  5. T-105 초안: 충족, 보고서 마지막.
+  6. scripts/spikes Ruff/포맷 및 모든 산출물 300줄 이하: 충족, 실행 기록 §5.
+  7. 실제 실행 증거/git 상태: 충족, 실행 기록. 직접 git 쓰기 명령 없음.
+  8. 추가 제안과 놓친 점: 충족, 보고서 §7. 실제 ID 충돌·MODULE4692줄·117개 syntax
+     WINDOW·해시3종·세대 전환·source/rendered 분리·문법 배포·검색 품질 평가 제안.
+- 품질 검사: OpenAPI2개/mypy69개/import계약5개 통과. pytest는 git init/add를 실행하는
+  `scripts/tests/test_check_file_lines.py`를 제외하고 `--basetemp=.data/pytest-s02-resumed`
+  지정, 종료0(**416 passed, 37 deselected**). 전체 Ruff609건/format은 기존 임시 파일 및
+  의도적 fixture로 실패. 전체 make check **미충족**; 보호 설정/테스트는 수정하지 않았다.
+- 남은 이슈: source/rendered 범위 계약 승인, ID 충돌 해결, MODULE/타입/callback 분할,
+  zod 목표 초과 및 문법 호환성 검토. 프로덕션 구현이나 보호 구역 변경은 하지 않았다.
