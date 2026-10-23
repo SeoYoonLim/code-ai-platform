@@ -2,7 +2,7 @@
 
 - **담당:** Codex
 - **작성:** Claude · 2026-10-23
-- **상태:** todo (**T-107 머지 후 착수** — `container.py`와 `collection_for`가 T-107과 겹친다)
+- **상태:** in-progress (2026-10-24 위임; T-107 머지 완료 — `container.py`에 `scanner`·`indexing`이 이미 있고 `collection_for`는 `indexing_service.py`에 정의돼 있다)
 - **우선순위:** P0 — E2E CLI 스모크(T-110)의 "질의 → 출처 포함 답변"이 이 서비스다
 - **브랜치:** `task/T-108-rag-service`
 - **관련 문서:** [data-flow §4, §4.1](../architecture/02-data-flow.md), [ADR-0003 v2](../adr/0003-base-model-and-lora-serving.md), [ADR-0004](../adr/0004-chunk-text-split-and-id.md), [ADR-0005](../adr/0005-failure-safe-file-replacement.md), 계약 [engine.v1.yaml](../../contracts/openapi/engine.v1.yaml) `ChatStreamRequest`·`SourceRef`·`StreamEvent`·`RetrieveRequest`, 모델 [rag.py](../../services/ai-engine/src/engine/core/models/rag.py), 서비스 시그니처 [rag_service.py](../../services/ai-engine/src/engine/services/rag_service.py)
@@ -52,7 +52,7 @@
 - **테스트는 로컬 `.env`·환경변수에 영향받으면 안 된다.** `tests/conftest.py`에 autouse 픽스처를 추가한다: 모든 `ENGINE_*` 환경변수를 지우고 `Settings.model_config["env_file"]`을 `None`으로 바꿔(`monkeypatch.setitem`) 테스트가 끝나면 복원한다. 새 테스트는 그래도 `Settings(_env_file=None)`을 명시한다. 회귀 테스트: 임시 디렉터리로 `chdir`하고 `ENGINE_LLM_PROVIDER=nonsense`가 든 `.env`를 만든 뒤 `Settings()`가 오류 없이 기본값을 갖는지 확인한다. (이 카드 이전에 로컬 `.env`의 옛 값 때문에 `test_connect` 등이 실패한 전례가 있다.)
 
 ### 6. 연결 (T-107 머지 후)
-- `collection_for(project_id)`를 **한 곳**으로 합친다: `services/collections.py`로 옮기고 `indexing_service.py`와 `rag_service.py`가 import한다 (서비스끼리 중복 정의 금지).
+- `collection_for(project_id)`를 **한 곳**으로 합친다: 지금 `indexing_service.py`에 있는 것을 `services/collections.py`로 옮기고 `indexing_service.py`와 `rag_service.py`가 import한다 (서비스끼리 중복 정의 금지).
 - `Container`에 `rag: RagService`를 추가하고 `build_container`에서 조립한다(`num_ctx`, `rag_oversample` 전달). 기존 컨테이너 테스트를 확장한다.
 
 ## 대상 파일

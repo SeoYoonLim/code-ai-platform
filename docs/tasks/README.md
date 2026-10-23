@@ -45,8 +45,9 @@ S-02 (병행) ─────┘ → T-105 (M1 Chunker) 명세 입력
 | [T-104](T-104-chroma-vectorstore.md) | `ChromaVectorStore` (ChromaDB HTTP) | Codex | T-101 | **done** (PR #6, `f5c7219`) | — |
 | [T-105](T-105-ast-chunker.md) | `TreeSitterChunker` + CodeChunk `raw_code`/`search_text` 분리 반영 | Codex | T-104, S-02 | **done** (PR #8, `870de19`) | — |
 | [T-106](T-106-engine-registry.md) | Engine Registry & Factory Wire-up (`FileAdapterRegistry` + `container.py`) | Codex | T-105 | **done** (PR #9, `cd726b8`) | — |
-| [T-107](T-107-indexing-service.md) | IndexingService + 실패 안전 색인 (`replace_file`, 스캐너) — [ADR-0005](../adr/0005-failure-safe-file-replacement.md) | Codex | T-106 | **in-progress** (`task/T-107-indexing-service`) | P0 |
-| T-108 ~ T-111 | RagService · API · **E2E CLI 스모크(T-110)** · 어댑터 하드닝 | Codex | T-107 | 카드 미작성 | — |
+| [T-107](T-107-indexing-service.md) | IndexingService + 실패 안전 색인 (`replace_file`, 스캐너) — [ADR-0005](../adr/0005-failure-safe-file-replacement.md) | Codex | T-106 | **done** (PR #10, `054b746`) | — |
+| [T-108](T-108-rag-service.md) | RagService — 결정적 검색, 컨텍스트 조립, 근거 기반 채팅 스트림 | Codex | T-107 | **in-progress** (`task/T-108-rag-service`) | P0 |
+| T-109 ~ T-111 | API · **E2E CLI 스모크(T-110)** · 어댑터 하드닝 | Codex | T-108 | 카드 미작성 | — |
 
 ```
 T-101 ─┬─ T-102   (LLM)         ─┐

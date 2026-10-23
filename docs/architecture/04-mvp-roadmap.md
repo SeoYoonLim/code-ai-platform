@@ -96,12 +96,12 @@ git 초기화는 착수 전(10/21)에 끝났다 (`806a236`). 카드: [docs/tasks
 | [T-105](../tasks/T-105-ast-chunker.md) | `adapters/parsing/treesitter_chunker.py` — Python, TypeScript/TSX/JS + window 폴백, `CodeChunk` raw_code/search_text 분리 ([ADR-0004](../adr/0004-chunk-text-split-and-id.md)) | `CodeChunker` |
 | [T-106](../tasks/T-106-engine-registry.md) | `adapters/registry_file.py` + `container.py` 어댑터 조립·자원 소유권 + `main.py` lifespan | `LoRAAdapterRegistry` |
 | [T-107](../tasks/T-107-indexing-service.md) | `services/indexing_service.py` (증분, 취소, 진행률) + **`VectorStore.replace_file`로 부분 실패 시 기존 검색 보존** + 파일 스캐너 ([ADR-0005](../adr/0005-failure-safe-file-replacement.md)) | `VectorStore`, `SourceScanner` |
-| T-108 | `services/rag_service.py` (§4.1 컨텍스트 조립) | — |
+| [T-108](../tasks/T-108-rag-service.md) | `services/rag_service.py` (결정적 검색 `(−score, chunk_id)`, §4.1 컨텍스트 조립, 근거 기반 채팅 스트림 Sources→Token→Done) | `VectorStore`, `Embedder`, `LLMProvider` |
 | T-109 | `api/v1/{system,generate,index,retrieve}.py` + 실제 헬스 집계 + 계약 테스트 | — |
 | **T-110** | **E2E CLI 스모크:** `python -m engine.cli smoke <repo>` — 컨테이너 조립 → 색인 → 질의 → 출처(경로·줄 범위) 포함 답변 → 검증. Fake(CI)와 실서버(수동) 두 모드 | 전체 |
 | T-111 | 어댑터 하드닝 (Codex 감사 지적: Chroma 호출 타임아웃, 손상 레코드 예외 변환, LoRA 카탈로그 갱신) | `VectorStore`, `LLMProvider` |
 
-> T-101~T-106 카드는 작성 완료 (T-101~T-106 구현 완료). T-107~T-111은 앞선 카드 구현 결과를 보고 순차 작성한다. **E2E 스모크(T-110)는 M1 완료 조건이다** — 어댑터 단위 테스트가 모두 green이어도 사용자 흐름 하나가 끝까지 돌지 않으면 M1을 닫지 않는다 (Codex 감사 2026-10-23).
+> T-101~T-108 카드는 작성 완료 (T-101~T-106 구현 완료). T-109~T-111은 앞선 카드 구현 결과를 보고 순차 작성한다. **E2E 스모크(T-110)는 M1 완료 조건이다** — 어댑터 단위 테스트가 모두 green이어도 사용자 흐름 하나가 끝까지 돌지 않으면 M1을 닫지 않는다 (Codex 감사 2026-10-23).
 
 **완료 기준**
 - **E2E CLI 스모크(T-110)가 Fake 모드로 CI에서, 실서버 모드로 수동 실행에서 모두 통과.** 답변의 출처(경로·줄 범위)가 실제 `raw_code`와 일치
