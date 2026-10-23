@@ -21,6 +21,7 @@ jobs:
           enable-cache: true
       - run: uv python install 3.12
       - run: uv sync --all-packages --frozen
+      - run: make fetch-grammars
       - run: make check
 
   contracts:

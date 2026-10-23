@@ -29,13 +29,14 @@ def in_memory_store() -> InMemoryVectorStore:
 def chunk_factory() -> Callable[[int], CodeChunk]:
     def make(index: int) -> CodeChunk:
         return CodeChunk(
-            chunk_id=f"p:file{index}.py::f",
+            chunk_id=f"p:file{index}.py::f{index}@1-1",
             project_id="p",
             path=f"file{index}.py",
             language=Language.PYTHON,
             kind=ChunkKind.FUNCTION,
             symbol=f"f{index}",
-            text=f"def f{index}(): return {index}",
+            raw_code=f"def f{index}(): return {index}",
+            search_text=f"# function f{index}\ndef f{index}(): return {index}",
             start_line=1,
             end_line=1,
             content_hash=f"hash{index}",

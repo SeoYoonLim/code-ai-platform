@@ -184,7 +184,8 @@ sequenceDiagram
 ```
 
 ### 3.2 청크 ID와 메타데이터
-- `chunk_id = "{project_id}:{path}::{symbol}"`. 내용이 바뀌어도 같은 심볼이면 ID가 유지되므로 upsert가 멱등이다.
+- `chunk_id = "{project_id}:{path}::{symbol}@{start_line}-{end_line}"` ([ADR-0004](../adr/0004-chunk-text-split-and-id.md)). 같은 파일의 동명 심볼도 충돌하지 않는다. 줄 위치가 바뀌면 ID가 바뀌므로 변경된 파일은 항상 path 단위로 전부 삭제한 뒤 재삽입한다(§3.3).
+- 청크는 `raw_code`(원본 그대로, 인용·표시용)와 `search_text`(헤더 + 렌더링 코드, 임베딩 입력)를 따로 가진다.
 - Chroma 메타데이터: `path`, `language`, `kind`, `symbol`, `start_line`, `end_line`, `content_hash`, `commit_sha`.
 - 컬렉션: `proj_{project_id}` (프로젝트 간 격리, 삭제 시 `drop_collection`).
 

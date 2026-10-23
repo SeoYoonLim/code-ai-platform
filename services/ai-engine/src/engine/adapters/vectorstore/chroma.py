@@ -75,7 +75,7 @@ class ChromaVectorStore:
                 await handle.upsert(
                     ids=[chunk.chunk_id for chunk in batch],
                     embeddings=vectors,
-                    documents=[chunk.text for chunk in batch],
+                    documents=[chunk.search_text for chunk in batch],
                     metadatas=[encode(chunk) for chunk in batch],
                 )
 
