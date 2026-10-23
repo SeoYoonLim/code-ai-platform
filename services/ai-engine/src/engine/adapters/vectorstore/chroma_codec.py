@@ -24,6 +24,7 @@ def collection_name(value: str) -> str:
 
 def encode(chunk: CodeChunk) -> Metadata:
     meta: dict[str, str | int | float | bool] = {
+        "raw_code": chunk.raw_code,
         "project_id": chunk.project_id,
         "path": chunk.path,
         "language": chunk.language.value,
@@ -42,7 +43,7 @@ def encode(chunk: CodeChunk) -> Metadata:
 def decode(ident: str, text: str, meta: Metadata) -> CodeChunk:
     # Metadata is Chroma's scalar union; validate the stored shape before decoding.
     def string(key: str) -> str:
-        value = meta[key]
+        value = meta.get(key)
         if not isinstance(value, str):
             raise VectorStoreError("invalid chunk metadata")
         return value
@@ -65,6 +66,7 @@ def decode(ident: str, text: str, meta: Metadata) -> CodeChunk:
         Language(string("language")),
         ChunkKind(string("kind")),
         string("symbol"),
+        string("raw_code"),
         text,
         start,
         end,

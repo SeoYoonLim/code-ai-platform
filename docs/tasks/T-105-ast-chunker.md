@@ -73,4 +73,116 @@
 수정하지 말고 결과 절의 "제안"에 적는다. 특히 S-02 §7이 제기한 항목(삭제 후 재삽입의 위험, 해시·세대 관리)은 T-107 설계에서 다루므로 여기서 구현하지 않는다.
 
 ## 결과
-<Codex 기록: 변경 파일, 실행한 명령과 실제 출력, 수락 기준 항목별 충족 여부, 미실행 항목, 제안>
+구현 완료. 단, 저장소 전체 `make check`는 아래 기존 Ruff 문제와 git 실행 테스트 제외 때문에 미충족이다.
+보호된 파일, 문법 캐시, 외부 저장소는 수정하지 않았다. 설치·다운로드·Docker·git 변경 명령을 실행하지 않았다.
+
+### 변경 파일
+- `src/engine/adapters/parsing/` (`services/ai-engine/` 기준):
+  `language_map.py`, `treesitter_chunker.py`, 새 `extract.py`, 새 `fake.py`.
+- `src/engine/adapters/vectorstore/chroma_codec.py`, `chroma.py`.
+  `in_memory.py`는 CodeChunk를 그대로 보관하므로 수정 불필요.
+- `tests/conftest.py`, `tests/conformance/vector_store_suite.py`,
+  `tests/unit/adapters/test_fakes_together.py`.
+- 새 `tests/conformance/chunker_suite.py`.
+- 새 `tests/unit/adapters/parsing/test_treesitter_chunker.py`,
+  `test_t105_fake_chunker.py`, `measure_t105.py`.
+- 새 `tests/unit/adapters/vectorstore/test_t105_codec.py`.
+- 새 `tests/fixtures/chunking/t105-collisions.py`, `t105-collisions.ts`,
+  `t105-render.golden.json` (직접 작성한 기대값; 기존 expected 파일 변경 없음).
+- 이 작업 카드의 결과 절.
+
+### 수락 기준별 판정
+| 번호 | 판정 | 증거 |
+|---|---|---|
+| 1 적합성 | 충족 | ChunkerConformance 상속 실행: 결정성, ID 중복, 원문, 빈/주석/끝 개행 없음, supports, 폴백. fixture 및 저장소 전체 span 감사에서 누락 0 |
+| 2 S-02 fixture | 충족 | 기존 expected 8/8 일치, 손상 입력 5/5 전체 WINDOW |
+| 3 경계 | 충족 | 한글😀 UTF-8, CRLF·탭, U+2028, 200/201/220/221/251줄과 정확히 20줄 overlap 단언 |
+| 4 ID 충돌 | 충족 | 직접 작성한 getter/setter·TS overload·동명 중첩 클래스 fixture, httpx/zod 충돌 각각 0 |
+| 5 클래스 | 충족 | Python decorator/필드/서명·중첩 클래스와 TS `{ ... }` 렌더링 검사; raw_code 원문 보존 |
+| 6 MODULE | 충족 | `spans=1-1,7-7`, 함수/클래스 본문 제외 원문 조립; golden ID/raw/search 비교 |
+| 7 문법 수명 | 충족 | 생성자 factory 4회, chunk 중 추가 호출 0; I/O 차단·캐시 부재 시 get_parser 호출 0·ParseError 언어명 검사 |
+| 8 성능 | 충족 | 아래 실제 저장소 최종 측정: 두 저장소 p95 < 50 ms/1k LOC |
+| 9 모델 전파 | 충족(실행 제한 명시) | 실행 가능한 기존 테스트와 신규 테스트 457 passed; Chroma CLASS/MODULE 원문·검색문 왕복, 예약 키 분리, raw 누락/잘못된 타입 검사. CodeChunk의 옛 text 접근 제거 |
+| 10 make check | 미충족 | src mypy strict·import 5계약·범위 Ruff·300줄 검사 통과. 전체 Ruff는 기존 fixture/임시 파일에서 실패. git 변경 테스트 미실행 |
+
+### 실행 명령과 실제 출력
+모든 Python 실행은 `.venv/Scripts/python.exe`를 사용했다. 아래 `PY`는 그 실행 파일의 표기상 약칭이다.
+연속 명령의 마지막 종료 코드로 앞 단계 실패를 숨기지 않고 각 결과를 별도로 기록했다.
+
+1. 기본 캐시 및 실제 파서 probe (종료 0):
+   `PY -c "from tree_sitter_language_pack import downloaded_languages, get_parser; print(downloaded_languages()); [(print(n, get_parser(n).parse(b'x=1').root_node.has_error)) for n in ('python','typescript','tsx','javascript')]"`
+   ```text
+   ['javascript', 'python', 'tsx', 'typescript']
+   python False
+   typescript False
+   tsx False
+   javascript False
+   ```
+   Point 속성 접근 없음. 생성자 기본 loader도 다운로드 전 캐시 존재를 확인한다.
+
+2. `PY -m pytest --ignore=scripts/tests/test_check_file_lines.py --basetemp=.data/pt-t105-run -q`
+   (종료 0): `457 passed, 37 deselected, 2 warnings in 14.99s`.
+   경고: 기존 chromadb asyncio deprecation, pytest cache 디렉터리 생성 실패.
+   `scripts/tests/test_check_file_lines.py`는 내부에서 `git init/add`를 실행하므로 미실행.
+   해당 테스트를 포함한 전체 pytest 성공을 주장하지 않는다.
+
+3. `PY -m pytest services/ai-engine/tests/integration/test_chroma_live.py -m integration --basetemp=.data/pt-t105-run -q`
+   (종료 0): `28 skipped, 2 warnings in 0.82s`.
+   `ENGINE_IT_CHROMA_URL` 미설정에 따른 기존 skip을 실제 확인했다. 실제 서버 왕복·재시작은 미실행.
+
+4. `PY -m mypy --strict packages/py-common/src services/ai-engine/src services/backend/src`
+   (종료 0): `Success: no issues found in 71 source files`.
+
+5. `.venv/Scripts/lint-imports.exe` (종료 0):
+   `Analyzed 99 files, 128 dependencies.` / `Contracts: 5 kept, 0 broken.`
+
+6. `PY -m openapi_spec_validator contracts/openapi/engine.v1.yaml` 및
+   `PY -m openapi_spec_validator contracts/openapi/backend.v1.yaml` (각 종료 0):
+   `contracts/openapi/engine.v1.yaml: OK`, `contracts/openapi/backend.v1.yaml: OK`.
+
+7. `PY -m ruff check services/ai-engine/src services/ai-engine/tests --exclude services/ai-engine/tests/fixtures`
+   (종료 0): `All checks passed!`.
+   같은 범위 `PY -m ruff format --check ...` (종료 0): `83 files already formatted`.
+   새 충돌 Python fixture도 별도 `ruff check` 통과; 동명 선언의 F811은 의도 설명을 붙인 noqa로 한정했다.
+
+8. 전체 레시피의 Ruff 명령도 실제 실행했다:
+   `PY -m ruff check .` (종료 1): `Found 609 errors.`
+   예: `.pytest-t104/test_untracked_ignored0/untracked.py`의 B018/F821,
+   기존 chunking fixture의 의도적인 문법 오류/미정의 decorator/탭.
+   `PY -m ruff format --check .` (종료 2):
+   `3 files would be reformatted, 234 files already formatted`; 기존 손상 fixture 파싱 실패도 포함.
+   출력 보존: `.data/t105-ruff-full.txt`, `.data/t105-format-full.txt`.
+   보호된 설정이나 기존 golden 입력을 바꾸어 숨기지 않았다.
+
+9. `make` 래퍼 자체는 미실행. Makefile의 검증 명령을 위와 같이 직접 실행했다.
+   기존 line checker는 `git ls-files`를 호출하므로 별도 읽기 전용 pathlib 순회로 검사했다.
+   services/packages/scripts/apps의 생성물 제외 py/ts/tsx/dart에서
+   `source line check: 125 files; 0 violations []` (종료 0).
+   최종 재검사: `source line check: 127 files; 0 violations []` (종료 0), 작업 카드 188줄.
+
+### httpx / zod 실측
+재현 명령 (실제로 실행, 종료 0):
+`PY services/ai-engine/tests/unit/adapters/parsing/measure_t105.py`
+외부 저장소는 `.data/spike-repos/httpx`, `.data/spike-repos/zod`를 읽기만 했다.
+파일별 chunk() 3회 median을 1k LOC로 정규화한 nearest-rank p95다.
+파서 로드·파일 읽기·원문/ID 감사는 타이머 밖이며 chunk()의 최종 ID/헤더 생성은 포함한다.
+
+```text
+httpx: files=60, loc=17751, chunks=1234, id_collisions=0, missing_lines=0,
+       p95_ms_1k_loc=9.34999980017892, whole_window_files=0, max_module_lines=203
+zod:   files=477, loc=100043, chunks=1939, id_collisions=0, missing_lines=0,
+       p95_ms_1k_loc=10.57391302205413, whole_window_files=4, max_module_lines=4692
+```
+
+모든 파일에서 반복 출력 동일, 모든 청크의 raw_code와 선언된 span 원문 일치를 단언했다.
+S-02의 기존 ID 충돌 httpx 12 / zod 1이 새 ID에서 각각 0이다.
+새 측정 스크립트는 위 명령으로 실행했으며, 추가 임시 probe `.data/t105-measure.py`도 종료 0이었다.
+
+### 미실행·불확실성과 제안
+- 미실행: 실제 Chroma/live restart, Docker/GPU, git 변경 테스트, make 래퍼,
+  Linux/다른 Python 조합의 native parser 확인. 다운로드·설치는 시도하지 않았다.
+- 전체 Ruff가 기존 fixture와 임시 폴더를 검사하는 현재 설정에는 동의하지 않는다.
+  Claude가 보호된 설정에서 파서 fixture와 임시 출력 제외 범위를 명시하는 것을 제안한다.
+- MODULE 4,692줄과 문법 오류 폴백 4파일은 유지했다. 200줄 심볼 제한만으로
+  임베딩 payload 상한이 보장되지 않으므로 byte/token 예산·타입/callback 분리는 후속 설계 제안이다.
+- 줄 삽입으로 바뀌는 ID와 삭제/재삽입의 세대 관리 문제는 T-107에서 다룬다. 이번 범위에 구현하지 않았다.

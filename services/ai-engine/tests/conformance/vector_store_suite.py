@@ -29,9 +29,9 @@ class VectorStoreConformance:
     async def test_upsert_replaces_existing_chunk(
         self, populated: VectorStore, chunk_factory: Callable[[int], CodeChunk]
     ) -> None:
-        updated = replace(chunk_factory(0), text="updated")
+        updated = replace(chunk_factory(0), raw_code="updated", search_text="updated search")
         await populated.upsert("c", [updated], [[1.0, 0.0]])
-        assert (await populated.query("c", [1.0, 0.0]))[0].chunk.text == "updated"
+        assert (await populated.query("c", [1.0, 0.0]))[0].chunk.raw_code == "updated"
 
     async def test_length_mismatch_raises(
         self, populated: VectorStore, chunk_factory: Callable[[int], CodeChunk]

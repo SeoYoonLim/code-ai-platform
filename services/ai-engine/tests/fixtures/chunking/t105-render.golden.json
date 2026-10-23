@@ -1,0 +1,17 @@
+[
+  {
+    "chunk_id": "p:sample.py::module@1-7",
+    "raw_code": "before()\nafter()\n",
+    "search_text": "# path: sample.py\n# symbol: module (module, python)\nbefore()\nafter()\n"
+  },
+  {
+    "chunk_id": "p:sample.py::Box@2-6",
+    "raw_code": "class Box:\n    field = 1\n    @deco\n    def run(self):\n        secret()\n",
+    "search_text": "# path: sample.py\n# symbol: Box (class, python)\nclass Box:\n    field = 1\n    @deco\n    def run(self):\n        ...\n"
+  },
+  {
+    "chunk_id": "p:sample.py::Box.run@4-6",
+    "raw_code": "    @deco\n    def run(self):\n        secret()\n",
+    "search_text": "# path: sample.py\n# symbol: Box.run (method, python)\n    @deco\n    def run(self):\n        secret()\n"
+  }
+]
