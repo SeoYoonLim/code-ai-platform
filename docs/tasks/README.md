@@ -16,7 +16,7 @@
 
 상태: `todo → ready → in-progress → review → done` (막히면 `blocked`)
 
-**하드웨어 사양:** RTX 4060 8GB, 예산과 설정은 [ADR-0002](../adr/0002-gpu-budget-rtx4060-8gb.md) 참조
+**하드웨어 사양:** RTX 5070 Ti 16GB (2026-10-23 교체, [ADR-0003 v2](../adr/0003-base-model-and-lora-serving.md)). M0·S-01 당시는 RTX 4060 8GB([ADR-0002](../adr/0002-gpu-budget-rtx4060-8gb.md))였다.
 
 ### 진행 순서
 ```

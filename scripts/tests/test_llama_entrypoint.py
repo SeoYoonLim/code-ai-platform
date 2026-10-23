@@ -28,12 +28,12 @@ def test_entrypoint_arguments(tmp_path: Path, names: list[str]) -> None:
     result = subprocess.run([bash, str(local)], capture_output=True, text=True, check=False)
     assert result.returncode == 0, result.stderr
     args = result.stdout.splitlines()
-    assert args[:2] == ["-m", "/models/qwen2.5-coder-3b-instruct-q4_k_m.gguf"]
+    assert args[:2] == ["-m", "/models/qwen2.5-coder-7b-instruct-q4_k_m.gguf"]
     assert args[-16:] == [
         "-ngl",
         "99",
         "-c",
-        "16384",
+        "32768",
         "-np",
         "2",
         "-fa",

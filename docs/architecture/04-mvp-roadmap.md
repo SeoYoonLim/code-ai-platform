@@ -202,7 +202,7 @@ git 초기화는 착수 전(10/21)에 끝났다 (`806a236`). 카드: [docs/tasks
 | Ollama가 GGUF LoRA를 로드하지 못하거나 품질이 떨어짐 | M6 배포 경로 차단 | **W1 Spike S-01**. Plan B(병합 GGUF). 8GB에서 vLLM 전환(Plan C)은 3B만 가능 |
 | 7B 모델의 구조화 출력 품질 부족 | R3 미달 | S-01 M3으로 조기 측정. 프롬프트·스키마 단순화, 재시도, LoRA로 보정 |
 | GPU 1장에서 서빙과 학습 경합 | 개발 지연 | 학습은 야간 배치. 학습 중에는 FakeLLM으로 개발 |
-| **개발 GPU가 RTX 4060 8GB** | 7B 학습/서빙 한계, 컨텍스트 8K 축소 | ADR-0002 사양 적용 (Q4_K_M, KV q8_0, QLoRA + gradient checkpointing, 임베딩 CPU). S-01 D-5 판정 미달 시 3B 전환 (설정 한 줄) |
+| **개발 GPU (v2: RTX 5070 Ti 16GB로 교체됨, ADR-0003 v2; 아래는 8GB 시절 항목)** | 7B 학습/서빙 한계, 컨텍스트 8K 축소 | ADR-0002 사양 적용 (Q4_K_M, KV q8_0, QLoRA + gradient checkpointing, 임베딩 CPU). S-01 D-5 판정 미달 시 3B 전환 (설정 한 줄) |
 | 학습과 서빙이 GPU를 공유할 수 없음 | 학습 중 실 LLM 테스트 불가 | `make gpu-train-mode` / `gpu-serve-mode`, 학습은 야간 배치, 학습 중에는 `ENGINE_LLM_PROVIDER=fake` |
 | 학습 데이터 부족 또는 품질 저하 | 게이트 미통과 | 공개 OSS 저장소 히스토리로 보강 (라이선스 필터). MVP는 base 폴백 허용 |
 | Windows 개발 환경 (make, GPU Docker) | 온보딩 지연 | WSL2 가이드, Makefile 레시피를 `uv run` 직접 실행으로 대체 가능 |

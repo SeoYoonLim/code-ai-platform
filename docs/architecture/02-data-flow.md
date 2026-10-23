@@ -217,7 +217,7 @@ flowchart TD
 
 ### 4.1 컨텍스트 조립 규칙 (`RagService`)
 
-모델 컨텍스트 **8K 기준** 예산 ([ADR-0002](../adr/0002-gpu-budget-rtx4060-8gb.md): RTX 4060 8GB, `ENGINE_NUM_CTX=8192`):
+모델 컨텍스트 예산. **v2(ADR-0003, RTX 5070 Ti 16GB)부터 기본은 슬롯당 16K(`ENGINE_NUM_CTX=16384`)이므로 아래 표의 "16K" 열이 기본 예산이다.** 8K 열은 v1(RTX 4060 8GB, `ENGINE_NUM_CTX=8192`) 기준 이력이다:
 
 | 우선순위 | 블록 | 기본 (8K) | 긴 컨텍스트 모드 (16K, hybrid) |
 |---|---|---|---|
@@ -283,7 +283,7 @@ flowchart LR
 
 | # | 항목 | 제안 | 대안 |
 |---|---|---|---|
-| Q1 | Base 모델 | ~~7B~~ → **[ADR-0003](../adr/0003-base-model-and-lora-serving.md)로 확정:** Qwen2.5-Coder-**3B**-Instruct Q4_K_M (7B는 8GB 학습 가드 초과로 폐기). LoRA는 `llama-server --lora`로 서빙 | 클라우드 학습 (24GB+) 후 7B |
+| Q1 | Base 모델 | **[ADR-0003 v2](../adr/0003-base-model-and-lora-serving.md):** Qwen2.5-Coder-**7B**-Instruct Q4_K_M (RTX 5070 Ti 16GB; v1은 8GB 때문에 3B). 14B는 후보. LoRA는 `llama-server --lora`로 서빙 | 클라우드 학습 (24GB+) 후 7B |
 | Q2 | 임베딩 모델 | **Ollama `nomic-embed-text`** (서빙 스택 단일화) | 코드 특화 임베딩 (bge-m3, jina-code 등) — 검색 품질 비교 후 교체 |
 | Q3 | Engine의 코드 접근 방식 | **MVP: 공유 볼륨 읽기 전용 마운트** | 운영: Backend가 파일 내용을 전송 (GPU 노드 분리 시) |
 | Q4 | 재순위화(Reranker) | **MVP 제외**, 검색 품질 지표 확인 후 도입 | cross-encoder reranker 추가 |

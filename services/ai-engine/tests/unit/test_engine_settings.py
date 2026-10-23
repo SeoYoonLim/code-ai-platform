@@ -83,7 +83,7 @@ def test_embedding_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     ):
         monkeypatch.delenv("ENGINE_EMBED_" + key, raising=False)
     settings = Settings(_env_file=None)
-    assert settings.embed_device_policy == "dynamic"
+    assert settings.embed_device_policy == "gpu"
     assert settings.embed_idle_grace_s == 3
     assert settings.embed_min_dwell_s == 10
     assert settings.embed_batch_size == 32

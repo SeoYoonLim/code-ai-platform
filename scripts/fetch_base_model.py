@@ -10,8 +10,20 @@ import httpx
 import structlog
 
 ROOT = Path(__file__).resolve().parents[1]
-MODEL = "qwen2.5-coder-3b-instruct-q4_k_m.gguf"
-URL = f"https://huggingface.co/Qwen/Qwen2.5-Coder-3B-Instruct-GGUF/resolve/main/{MODEL}"
+SIZES = ("3b", "7b", "14b")
+DEFAULT_SIZE = "7b"  # ADR-0003 v2
+
+
+def model_file(size: str) -> str:
+    return f"qwen2.5-coder-{size}-instruct-q4_k_m.gguf"
+
+
+def model_url(size: str) -> str:
+    return f"https://huggingface.co/Qwen/Qwen2.5-Coder-{size.upper()}-Instruct-GGUF/resolve/main/{model_file(size)}"
+
+
+MODEL = model_file(DEFAULT_SIZE)
+URL = model_url(DEFAULT_SIZE)
 LOCK = ROOT / "scripts/models.lock"
 log = structlog.get_logger()
 
@@ -21,12 +33,12 @@ def checksum(path: Path) -> str:
         return hashlib.file_digest(source, "sha256").hexdigest()
 
 
-async def fetch(destination: Path, lock: Path = LOCK, url: str = URL) -> None:
+async def fetch(destination: Path, lock: Path = LOCK, url: str = URL, model: str = MODEL) -> None:
     """Trust on first download, then require the recorded checksum on every run."""
     raw: object = json.loads(await asyncio.to_thread(lock.read_text, encoding="utf-8"))
     if not isinstance(raw, dict) or any(not isinstance(v, str) for v in raw.values()):
         raise ValueError("invalid models.lock")
-    expected = raw.get(MODEL)
+    expected = raw.get(model)
     if (
         expected is not None
         and await asyncio.to_thread(destination.exists)
@@ -52,7 +64,7 @@ async def fetch(destination: Path, lock: Path = LOCK, url: str = URL) -> None:
         if expected is not None and actual != expected:
             raise ValueError("model sha256 mismatch")
         if expected is None:
-            raw[MODEL] = actual
+            raw[model] = actual
             await asyncio.to_thread(lock.write_text, json.dumps(raw, indent=2) + "\n", encoding="utf-8")
             log.info("first_download_hash_recorded", sha256=actual)
         await asyncio.to_thread(partial.replace, destination)
@@ -63,9 +75,12 @@ async def fetch(destination: Path, lock: Path = LOCK, url: str = URL) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--destination", type=Path, default=ROOT / ".data/models" / MODEL)
+    parser.add_argument("--size", choices=SIZES, default=DEFAULT_SIZE)
+    parser.add_argument("--destination", type=Path)
     args = parser.parse_args()
-    asyncio.run(fetch(args.destination))
+    model = model_file(args.size)
+    destination = args.destination or ROOT / ".data/models" / model
+    asyncio.run(fetch(destination, url=model_url(args.size), model=model))
 
 
 if __name__ == "__main__":
