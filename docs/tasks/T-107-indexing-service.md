@@ -2,7 +2,7 @@
 
 - **담당:** Codex
 - **작성:** Claude · 2026-10-23
-- **상태:** todo (**T-106 머지 후 착수** — `container.py`에 스캐너·서비스를 연결해야 한다)
+- **상태:** in-progress (2026-10-23 위임; T-106 머지 완료 — `container.py`에 스캐너·서비스를 연결해야 한다)
 - **우선순위:** P0 — T-108(RAG)·T-109(API)·T-110(E2E 스모크)의 입력이 이 색인이다
 - **브랜치:** `task/T-107-indexing-service`
 - **관련 문서:** [ADR-0005](../adr/0005-failure-safe-file-replacement.md) (**이 카드의 설계 근거**), [ADR-0004](../adr/0004-chunk-text-split-and-id.md), [data-flow §3](../architecture/02-data-flow.md), 계약 [engine.v1.yaml](../../contracts/openapi/engine.v1.yaml) `IndexRequest`/`IndexJob`/`IndexStats`/`JobProgress`, 포트 [vector_store.py](../../services/ai-engine/src/engine/core/interfaces/vector_store.py) · [source_scanner.py](../../services/ai-engine/src/engine/core/interfaces/source_scanner.py), 모델 [indexing.py](../../services/ai-engine/src/engine/core/models/indexing.py), 서비스 시그니처 [indexing_service.py](../../services/ai-engine/src/engine/services/indexing_service.py)
