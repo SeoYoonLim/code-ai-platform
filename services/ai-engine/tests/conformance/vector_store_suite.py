@@ -117,3 +117,35 @@ class VectorStoreConformance:
 
     async def test_zero_vector_scores_zero(self, populated: VectorStore) -> None:
         assert all(result.score == 0 for result in await populated.query("c", [0.0, 0.0]))
+
+    async def test_replace_file_contract(
+        self, populated: VectorStore, chunk_factory: Callable[[int], CodeChunk]
+    ) -> None:
+        old = chunk_factory(0)
+        new = replace(old, chunk_id="new-id", content_hash="new-hash", raw_code="return 2")
+        for _ in range(2):
+            await populated.replace_file("c", old.path, [new], [[1.0, 0.0]])
+            rows = {r.chunk.chunk_id: r.chunk for r in await populated.query("c", [1.0, 0.0])}
+            assert rows == {
+                new.chunk_id: new,
+                **{chunk_factory(i).chunk_id: chunk_factory(i) for i in (1, 2)},
+            }
+            assert await populated.get_file_hashes("c") == {
+                old.path: "new-hash",
+                "file1.py": "hash1",
+                "file2.py": "hash2",
+            }
+        await populated.replace_file("c", old.path, [], [])
+        assert {r.chunk.path for r in await populated.query("c", [1.0, 0.0])} == {"file1.py", "file2.py"}
+
+    async def test_replace_file_rejects_invalid_input(
+        self, populated: VectorStore, chunk_factory: Callable[[int], CodeChunk]
+    ) -> None:
+        before = await populated.query("c", [1.0, 0.0])
+        with pytest.raises(ValueError, match="path"):
+            await populated.replace_file("c", "wrong.py", [chunk_factory(0)], [[1.0, 0.0]])
+        with pytest.raises(ValueError, match="length"):
+            await populated.replace_file("c", "file0.py", [chunk_factory(0)], [])
+        assert await populated.query("c", [1.0, 0.0]) == before
+        with pytest.raises(CollectionNotFound):
+            await populated.replace_file("missing", "file0.py", [], [])

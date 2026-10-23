@@ -11,8 +11,10 @@ from engine.adapters.embeddings.fake import FakeEmbedder
 from engine.adapters.embeddings.ollama_embed import OllamaEmbedder
 from engine.adapters.llm.fake import FakeLLMProvider
 from engine.adapters.llm.llamacpp import LlamaServerProvider
+from engine.adapters.parsing.language_map import language_for_path
 from engine.adapters.parsing.treesitter_chunker import TreeSitterChunker
 from engine.adapters.registry_file import FileAdapterRegistry
+from engine.adapters.source.git_scanner import FileSystemScanner
 from engine.adapters.vectorstore.chroma import connect
 from engine.adapters.vectorstore.in_memory import InMemoryVectorStore
 from engine.core.interfaces import (
@@ -21,8 +23,10 @@ from engine.core.interfaces import (
     Embedder,
     LLMProvider,
     LoRAAdapterRegistry,
+    SourceScanner,
     VectorStore,
 )
+from engine.services.indexing_service import IndexingService
 from engine.settings import Settings
 
 log = structlog.get_logger()
@@ -46,6 +50,8 @@ class Container:
     chunker: CodeChunker
     registry: LoRAAdapterRegistry
     settings: Settings
+    scanner: SourceScanner
+    indexing: IndexingService
     _resources: AsyncExitStack = field(default_factory=AsyncExitStack, repr=False, compare=False)
 
     async def aclose(self) -> None:
@@ -118,7 +124,11 @@ async def build_container(settings: Settings | None = None) -> Container:
         _own(resources, chunker)
         registry = build_registry(config)
         _own(resources, registry)
-        return Container(llm, embedder, store, chunker, registry, config, resources)
+        scanner = FileSystemScanner(
+            language_for_path=language_for_path, max_file_bytes=config.index_max_file_bytes
+        )
+        indexing = IndexingService(scanner, chunker, embedder, store)
+        return Container(llm, embedder, store, chunker, registry, config, scanner, indexing, resources)
     except BaseException:
         # Attempt every callback and preserve the original build failure.
         try:

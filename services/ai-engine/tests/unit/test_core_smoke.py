@@ -17,6 +17,7 @@ def test_interfaces_exported() -> None:
         "LLMProvider",
         "LoRAAdapterRegistry",
         "VectorStore",
+        "SourceScanner",
     }
 
 

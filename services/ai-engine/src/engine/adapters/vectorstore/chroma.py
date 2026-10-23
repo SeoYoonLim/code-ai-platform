@@ -57,6 +57,9 @@ class ChromaVectorStore:
                 configuration={"hnsw": {"space": "cosine"}},
                 embedding_function=None,
             )
+        stored_dimension = (handle.metadata or {}).get("dimension")
+        if isinstance(stored_dimension, int) and stored_dimension != dimension:
+            raise VectorStoreError("collection dimension mismatch", detail={"reason": "dimension_mismatch"})
         validate_dimension(handle.metadata, [[0.0] * dimension])
 
     async def upsert(
@@ -78,6 +81,41 @@ class ChromaVectorStore:
                     documents=[chunk.search_text for chunk in batch],
                     metadatas=[encode(chunk) for chunk in batch],
                 )
+
+    async def replace_file(
+        self,
+        collection: str,
+        path: str,
+        chunks: Sequence[CodeChunk],
+        embeddings: Sequence[Sequence[float]],
+    ) -> None:
+        if len(chunks) != len(embeddings):
+            raise ValueError("chunks and embeddings must have equal lengths")
+        if any(chunk.path != path for chunk in chunks):
+            raise ValueError("chunk path mismatch")
+        handle = await self._get(collection)
+        validate_dimension(handle.metadata, embeddings)
+        async with boundary():
+            if not chunks:
+                await handle.delete(where={"path": path})
+                return
+            maximum = await self._client.get_max_batch_size()
+            if len(chunks) > maximum:
+                raise VectorStoreError(
+                    "file exceeds atomic batch limit", detail={"reason": "replace_too_large"}
+                )
+            vectors: list[Sequence[float] | Sequence[int]] = [list(v) for v in embeddings]
+            await handle.upsert(
+                ids=[c.chunk_id for c in chunks],
+                embeddings=vectors,
+                documents=[c.search_text for c in chunks],
+                metadatas=[encode(c) for c in chunks],
+            )
+            page = await handle.get(where={"path": path}, include=[])
+            wanted = {c.chunk_id for c in chunks}
+            obsolete = [ident for ident in page["ids"] if ident not in wanted]
+            if obsolete:
+                await handle.delete(ids=obsolete)
 
     async def query(
         self,
@@ -126,6 +164,7 @@ class ChromaVectorStore:
     async def get_file_hashes(self, collection: str) -> dict[str, str]:
         handle = await self._get(collection)
         result: dict[str, str] = {}
+        inconsistent: set[str] = set()
         offset = 0
         while True:
             async with boundary():
@@ -138,9 +177,10 @@ class ChromaVectorStore:
                     raise VectorStoreError("invalid file hash metadata")
                 if path in result and result[path] != digest:
                     log.warning("inconsistent_file_hash", path=path)
+                    inconsistent.add(path)
                 result[path] = digest
             if len(page["ids"]) < 1000:
-                return result
+                return {path: digest for path, digest in result.items() if path not in inconsistent}
             offset += 1000
 
     async def drop_collection(self, collection: str) -> None:

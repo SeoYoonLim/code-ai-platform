@@ -181,3 +181,73 @@ pytest에는 `GIT_CEILING_DIRECTORIES=C:/project/project1/.data`를 설정했다
 변경 파일은 이 카드(`docs/tasks/T-107-indexing-service.md`)뿐이며 제품 코드·금지 구역·`.git`은 수정하지 않았다. 새 스크립트·Dockerfile·compose·CI 설정은 작성하지 않았다.
 
 제안: Claude가 파일 버전 커밋 지점, 커밋 이후 정리 실패의 의미, 프로세스 중단 및 응답 유실의 보장 범위를 먼저 확정한다. 강한 계약을 유지하려면 버전별 물리 ID와 내구성 있는 파일별 커밋 선택, 이를 사용하는 검색·해시 조회를 함께 설계하고 query 변경 허용 범위를 조정하는 방향을 검토한다. 단순 staged/live 배치 승격이나 메모리 rollback만으로 현재 계약을 충족했다고 보고해서는 안 된다.
+
+
+### Reimplementation result (2026-10-23, design revision 1)
+
+Implemented revision 1: one atomic upsert followed by one obsolete-ID delete. No query/state filter changes. The earlier BLOCKED report above describes the superseded contract.
+
+#### Changed and created files
+
+Prefix: `services/ai-engine/`.
+
+- `src/engine/services/indexing_service.py`: immutable jobs, two scan passes, fingerprints, embed-before-replace, errors, cancellation, retention.
+- `src/engine/adapters/source/{__init__,rules,fake,git_scanner}.py`: memory/filesystem scanners and documented glob/classification rules.
+- `src/engine/adapters/vectorstore/{chroma,in_memory}.py`: replace_file, mixed-hash omission, dimension_mismatch reason.
+- `src/engine/{container,settings}.py`: scanner/service DI and index_max_file_bytes setting.
+- `tests/conformance/{vector_store_suite,scanner_suite}.py`: shared contracts.
+- `tests/unit/adapters/source/{__init__,test_scanners}.py`: both scanner suites, invalid root, unreadable file, gitignore.
+- `tests/unit/adapters/vectorstore/{fake_chroma_client,test_chroma_store,test_replace_failures}.py`: atomic fake behavior, failure injection, revised mixed-hash expectation.
+- `tests/unit/services/{__init__,indexing_fakes,test_indexing_failures,test_indexing_incremental,test_indexing_jobs,test_indexing_sample,test_indexing_chroma_recovery}.py`.
+- `tests/unit/test_core_smoke.py`: include the already-defined SourceScanner export.
+- `tests/integration/test_chroma_live.py`: isolate replace_file collection names in inherited conformance; Settings(_env_file=None).
+- `tests/fixtures/sample_repo/{app,util,model,config,validate}.py` and `tests/fixtures/sample_repo/web/{app,math,user,config,validate}.ts`: ten original sample files.
+
+Documentation: appended this result only. No forbidden files changed; no new dependencies, scripts, Dockerfiles, compose or CI configuration. No commands writing workspace .git were used. The gitignore test initializes only its temporary repository below `.data/pt-t107-run`.
+
+#### Acceptance evidence
+
+All named local tests passed in the final full pytest run. Live-server conformance remains unexecuted.
+
+| Acceptance item | Status and evidence |
+|---|---|
+| VectorStoreConformance | Local PASS, InMemory and fake Chroma: `test_replace_file_contract`, `test_replace_file_rejects_invalid_input`; replacement, other paths, empty list, idempotence, hashes, invalid input and missing collection. Live-server execution pending |
+| ScannerConformance | PASS, both scanners inherit it: sorted/deterministic paths, CRLF, sha256, size/binary/unsupported/glob reasons, silent default exclusions. Additional root/read/configured-limit/gitignore tests pass |
+| replace_file stage failures and same-ID counterexample | PASS: `test_replace_failure_stages_preserve_same_id_function[upsert/get/delete]` includes body-only same-ID edit, obsolete ID, added ID and another path. Failed upsert leaves every row and old hash exactly unchanged. Failed cleanup exposes every new chunk plus old residue, omits the mixed path hash, and retry leaves exactly the new set |
+| Atomic request and oversized replacement | PASS: same stage test uses batch_size=1 yet asserts a single two-chunk upsert. `test_fake_upsert_validates_whole_request_before_writing` rejects the second vector without overwriting the first row. `test_replace_too_large_preserves_every_row` asserts all rows, query and hashes unchanged |
+| Service embedding/replace failures and body-only edit | PASS: `test_service_second_file_failure_same_id_and_retry[embedding/replace]`; first file replaced, second exact old CodeChunk and fingerprint preserved. Retry equals clean successful indexing |
+| Service cleanup failure recovery | PASS: `test_service_retries_mixed_hash_path_after_cleanup_failure[get/delete]`; all new bodies visible, residue preserved, mixed path omitted, retry embeds only that file and equals clean indexing |
+| Deleted-file failure and oversized file skip | PASS: `test_service_deletion_failure_keeps_replacements_consistent`, `test_service_too_large_skips_one_file_and_continues` |
+| Incremental no-op/edit/delete/rename | PASS: `test_incremental_noop_edit_delete_rename`; no-op changes zero files and makes zero embedding calls |
+| Model/policy fingerprint | PASS: `test_fingerprint_model_or_policy_reindexes_all[model/policy]` |
+| FULL, dimensions, unrelated errors | PASS: `test_full_preserves_collection_and_removes_absent_paths`, `test_dimension_mismatch_only_full_drops`, `test_generic_ensure_failure_never_drops`; unrelated error preserves exact old rows |
+| ParseError | PASS: `test_service_parse_error_skips_only_bad_file`; log reason=parse_error, successful job, other file indexed |
+| Cancellation | PASS: `test_job_queued_terminal_cancel_and_conflict`, `test_running_cancel_at_file_boundary_and_progress`, `test_async_task_cancellation_records_then_propagates` |
+| Conflict, retention, snapshots | PASS: job tests cover QUEUED/RUNNING conflicts, other project, reuse after termination; `test_jobs_retention_filters_and_immutable_snapshots` preserves active jobs |
+| Statistics and progress | PASS: exact failure/incremental stats, expected phase order and current<=total in progress test |
+| search_text/raw_code/sample | PASS: `test_sample_repo_real_chunker_roundtrip`, ten original files, header-bearing embedding text, byte-decoded original raw_code, commit_sha, no-op retry. `test_real_parser_body_only_edit_keeps_id_and_changes_payload` reproduces the actual parser's same-ID body edit |
+| Container/settings | PASS: `test_container_wires_filesystem_scanner_even_in_fake_mode` and scanner configured-limit test |
+| make check equivalent / 300 lines | PASS: Windows direct recipes below. New untracked Python files were also counted through filesystem traversal, all <=300 lines |
+
+#### Actual commands and output
+
+Python: `.venv/Scripts/python.exe`. Pytest environment: `GIT_CEILING_DIRECTORIES=C:/project/project1/.data`, `--basetemp=.data/pt-t107-run`, `-o cache_dir=.data/pytest-cache`. New Settings instances use `_env_file=None`. These commands execute the Makefile check recipes directly on Windows, using the requested ruff scope.
+
+| Command | Exit | Actual output |
+|---|---|---|
+| `.venv/Scripts/python.exe -m ruff check services scripts packages docs` | 0 | `All checks passed!` |
+| `.venv/Scripts/python.exe -m ruff format --check services scripts packages docs` | 0 | `173 files already formatted` |
+| `.venv/Scripts/python.exe -m mypy --strict packages/py-common/src services/ai-engine/src services/backend/src` | 0 | `Success: no issues found in 78 source files` |
+| `.venv/Scripts/lint-imports.exe` | 0 | `Contracts: 5 kept, 0 broken.` |
+| `.venv/Scripts/python.exe scripts/check_file_lines.py --max 300` | 0 | No output |
+| `.venv/Scripts/python.exe -m openapi_spec_validator contracts/openapi/engine.v1.yaml` | 0 | `contracts/openapi/engine.v1.yaml: OK` |
+| `.venv/Scripts/python.exe -m openapi_spec_validator contracts/openapi/backend.v1.yaml` | 0 | `contracts/openapi/backend.v1.yaml: OK` |
+| `.venv/Scripts/python.exe -m pytest --basetemp=.data/pt-t107-run -o cache_dir=.data/pytest-cache --cov=engine --cov=backend --cov=py_common --cov-report=term -q` | 0 | `561 passed, 39 deselected, 1 warning in 19.18s`; `TOTAL 2221 24 99%` |
+
+The pytest warning is installed Chroma's asyncio.iscoroutinefunction deprecation. Coverage also prints `Module backend was never imported`; indexing_service coverage is 97%. Initial runs found stale last-hash/export assertions and a sample comparison that normalized CRLF; corrected those and reran the full suite successfully.
+
+#### Unexecuted items, uncertainty, proposal
+
+Server atomicity, lost responses, process termination and restart durability were not executed here (Claude's real-server verification is the supplied basis). The fake-client tests model measured server behavior; they do not independently establish server guarantees. Live tests retain the integration marker and were deselected. No Docker/external server was called.
+
+Proposal: no further disagreement with revision 1. Keep the ADR's remaining forced-termination durability limitation distinct from fake-client test evidence. Final response includes literal git status --short. The untracked `.pytest-t104/` directory was neither authored nor cleaned up by this task.

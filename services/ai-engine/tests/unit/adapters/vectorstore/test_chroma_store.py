@@ -36,6 +36,7 @@ def bounded_store(fake: FakeChromaClient) -> ChromaVectorStore:
     for name in (
         "ensure_collection",
         "upsert",
+        "replace_file",
         "query",
         "delete_by_paths",
         "get_file_hashes",
@@ -164,7 +165,7 @@ async def test_empty_order_and_filters(
         assert len(await store.query("c", [1.0, 0.0], where=MetadataFilter(predicate))) == 1
 
 
-async def test_pagination_batching_and_last_hash(
+async def test_pagination_batching_and_mixed_hash_omission(
     store: ChromaVectorStore, fake: FakeChromaClient, chunk_factory: Callable[[int], CodeChunk]
 ) -> None:
     await store.ensure_collection("c", dimension=2)
@@ -179,7 +180,7 @@ async def test_pagination_batching_and_last_hash(
     assert [call.kwargs["offset"] for call in handle.get.call_args_list] == [0, 1000, 2000]
     assert all(call.kwargs["limit"] == 1000 for call in handle.get.call_args_list)
     await store.upsert("c", [replace(chunks[-1], path=chunks[0].path)], [[1.0, 0.0]])
-    assert (await store.get_file_hashes("c"))[chunks[0].path] == chunks[-1].content_hash
+    assert chunks[0].path not in await store.get_file_hashes("c")
 
 
 @pytest.mark.parametrize(

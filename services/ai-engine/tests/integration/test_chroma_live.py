@@ -34,7 +34,7 @@ class TestChromaLive(VectorStoreConformance):
     @pytest.fixture
     async def store(self) -> AsyncIterator[VectorStore]:
         real = await asyncio.wait_for(
-            connect(Settings(chroma_url=AnyHttpUrl(os.environ["ENGINE_IT_CHROMA_URL"]))), 5
+            connect(Settings(_env_file=None, chroma_url=AnyHttpUrl(os.environ["ENGINE_IT_CHROMA_URL"]))), 5
         )
         prefix = "it_" + uuid4().hex + "_"
         touched: set[str] = set()
@@ -49,6 +49,7 @@ class TestChromaLive(VectorStoreConformance):
         for name in (
             "ensure_collection",
             "upsert",
+            "replace_file",
             "query",
             "delete_by_paths",
             "get_file_hashes",
@@ -93,7 +94,7 @@ async def test_live_restart_phases(chunk_factory: Callable[[int], CodeChunk]) ->
     if phase not in {"write", "read"} or not name:
         pytest.skip("set ENGINE_IT_CHROMA_PHASE=write/read and a unique ENGINE_IT_CHROMA_PERSISTENCE_NAME")
     store = await asyncio.wait_for(
-        connect(Settings(chroma_url=AnyHttpUrl(os.environ["ENGINE_IT_CHROMA_URL"]))), 5
+        connect(Settings(_env_file=None, chroma_url=AnyHttpUrl(os.environ["ENGINE_IT_CHROMA_URL"]))), 5
     )
     for method in ("ensure_collection", "upsert", "query", "get_file_hashes", "drop_collection"):
         setattr(store, method, bounded_call(getattr(store, method)))

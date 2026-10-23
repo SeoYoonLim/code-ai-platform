@@ -25,7 +25,7 @@ class InMemoryVectorStore:
         if dimension < 1:
             raise VectorStoreError("dimension must be positive")
         if collection in self._dimensions and self._dimensions[collection] != dimension:
-            raise VectorStoreError("collection dimension mismatch")
+            raise VectorStoreError("collection dimension mismatch", detail={"reason": "dimension_mismatch"})
         self._dimensions[collection] = dimension
         self._collections.setdefault(collection, {})
 
@@ -40,6 +40,24 @@ class InMemoryVectorStore:
         entries.update(
             (chunk.chunk_id, (chunk, tuple(vector))) for chunk, vector in zip(chunks, embeddings, strict=True)
         )
+
+    async def replace_file(
+        self,
+        collection: str,
+        path: str,
+        chunks: Sequence[CodeChunk],
+        embeddings: Sequence[Sequence[float]],
+    ) -> None:
+        if len(chunks) != len(embeddings):
+            raise ValueError("chunks and embeddings must have equal lengths")
+        if any(chunk.path != path for chunk in chunks):
+            raise ValueError("chunk path mismatch")
+        entries = self._get(collection)
+        for vector in embeddings:
+            self._validate(collection, vector)
+        replacement = {key: value for key, value in entries.items() if value[0].path != path}
+        replacement.update((c.chunk_id, (c, tuple(v))) for c, v in zip(chunks, embeddings, strict=True))
+        self._collections[collection] = replacement
 
     async def query(
         self,
@@ -75,7 +93,10 @@ class InMemoryVectorStore:
         return len(removed)
 
     async def get_file_hashes(self, collection: str) -> dict[str, str]:
-        return {chunk.path: chunk.content_hash for chunk, _ in self._get(collection).values()}
+        hashes: dict[str, set[str]] = {}
+        for chunk, _ in self._get(collection).values():
+            hashes.setdefault(chunk.path, set()).add(chunk.content_hash)
+        return {path: next(iter(values)) for path, values in hashes.items() if len(values) == 1}
 
     async def drop_collection(self, collection: str) -> None:
         self._get(collection)

@@ -26,4 +26,6 @@ class Settings(BaseSettings):
     embed_doc_prefix: str = "search_document: "
     embed_query_prefix: str = "search_query: "
 
+    index_max_file_bytes: int = Field(default=524288, gt=0)
+
     chroma_url: AnyHttpUrl = AnyHttpUrl("http://localhost:8001")
