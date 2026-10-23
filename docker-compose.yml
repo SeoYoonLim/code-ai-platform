@@ -73,7 +73,7 @@ services:
     environment:
       ENGINE_LLM_PROVIDER: llamacpp
       ENGINE_LLAMACPP_URL: http://llama-server:8080
-      ENGINE_OLLAMA_URL: http://ollama:11434
+      ENGINE_EMBED_URL: http://ollama:11434
       ENGINE_CHROMA_URL: http://chroma:8000
       ENGINE_REGISTRY_PATH: /registry/adapters.json
     volumes:
