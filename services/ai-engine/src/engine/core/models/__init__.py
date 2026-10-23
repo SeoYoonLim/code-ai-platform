@@ -22,6 +22,16 @@ from engine.core.models.indexing import (
     ScanItem,
     SkippedFile,
 )
+from engine.core.models.rag import (
+    ChatEvent,
+    ChatRequest,
+    ContextBlock,
+    ContextBundle,
+    DoneEvent,
+    SourceRef,
+    SourcesEvent,
+    TokenEvent,
+)
 from engine.core.models.registry import AdapterInfo, AdapterStage, AdapterTask
 from engine.core.models.retrieval import MetadataFilter, MetadataValue, RetrievedChunk
 
@@ -29,9 +39,14 @@ __all__ = [
     "AdapterInfo",
     "AdapterStage",
     "AdapterTask",
+    "ChatEvent",
     "ChatMessage",
+    "ChatRequest",
     "ChunkKind",
     "CodeChunk",
+    "ContextBlock",
+    "ContextBundle",
+    "DoneEvent",
     "FinishReason",
     "GenerationParams",
     "GenerationRequest",
@@ -53,6 +68,9 @@ __all__ = [
     "ScanItem",
     "SkippedFile",
     "SourceFile",
+    "SourceRef",
+    "SourcesEvent",
     "TokenChunk",
+    "TokenEvent",
     "TokenUsage",
 ]

@@ -235,7 +235,9 @@ flowchart TD
 - 학습 샘플(seq 2K~4K)은 같은 템플릿에서 블록 4를 0~2개로 줄여 생성한다 (ADR-0002 D-4).
 
 - 토큰 수는 base 모델 토크나이저 기준으로 추정한다. MVP는 `len(text) / 3.5` 근사를 쓰고, 이후 실제 토크나이저로 교체한다.
-- 동일 `path`의 청크가 인접하면 하나로 병합해 헤더 중복을 줄인다.
+- 동일 `path`의 청크 중 **줄 범위가 겹치는** 것은 우선순위가 높은 쪽만 남긴다 (첨부 > 유사도, 같으면 score 높은 쪽, 같으면 chunk_id). 인접 청크 병합은 MVP에서 하지 않는다 (T-108).
+- 컨텍스트에는 청크의 `raw_code`(원본)를 넣고, `search_text`(헤더 포함 임베딩 입력)는 검색에만 쓴다 ([ADR-0004](../adr/0004-chunk-text-split-and-id.md)).
+- 검색 결과 정렬은 `(score 내림차순, chunk_id 오름차순)`으로 결정적이다. 점수가 같은 청크의 순서를 저장소에 맡기지 않는다.
 
 ### 4.2 구조화 출력
 - analyze 요청은 `GenerationRequest.json_schema`에 Finding 배열 스키마를 지정한다. Ollama는 `format` 필드, vLLM은 guided decoding을 쓴다.
