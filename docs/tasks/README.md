@@ -43,7 +43,8 @@ S-02 (병행) ─────┘ → T-105 (M1 Chunker) 명세 입력
 | [T-102](T-102-llamaserver-provider.md) | `LlamaServerProvider` (llama-server `--lora`) + compose 서비스 | Codex | T-101 | **done** (PR #4, `5f3e62c`) | — |
 | [T-103](T-103-ollama-embedder-scheduling.md) | `OllamaEmbedder` + GPU/CPU 동적 스케줄링 | Codex | T-101, T-102 | **done** (PR #5, `5529bcd`) | — |
 | [T-104](T-104-chroma-vectorstore.md) | `ChromaVectorStore` (ChromaDB HTTP) | Codex | T-101 | **done** (PR #6, `f5c7219`) | — |
-| T-105 ~ T-109 | tree-sitter 청커 · 레지스트리 · IndexingService · RagService · API | Codex | T-104, S-02 | 카드 미작성 | — |
+| [T-105](T-105-ast-chunker.md) | `TreeSitterChunker` + CodeChunk `raw_code`/`search_text` 분리 반영 | Codex | T-104, S-02 | **in-progress** (`task/T-105-ast-chunker`) | P0 |
+| T-106 ~ T-109 | 레지스트리 · IndexingService · RagService · API | Codex | T-105 | 카드 미작성 | — |
 
 ```
 T-101 ─┬─ T-102   (LLM)         ─┐
