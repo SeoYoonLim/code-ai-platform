@@ -35,7 +35,9 @@
       chunker: CodeChunker
       registry: LoRAAdapterRegistry
       settings: Settings
+
       async def aclose(self) -> None: ...
+
 
   async def build_container(settings: Settings | None = None) -> Container: ...
   ```
