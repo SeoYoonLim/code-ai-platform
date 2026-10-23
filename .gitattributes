@@ -10,3 +10,7 @@
 packages/py-common/src/py_common/generated/** linguist-generated=true
 apps/web/src/lib/api/schema.d.ts linguist-generated=true
 apps/mobile/packages/api_client/** linguist-generated=true
+
+# S-02: CRLF를 검증하는 fixture는 줄바꿈 정규화 금지
+services/ai-engine/tests/fixtures/chunking/python/unicode_crlf.py -text
+services/ai-engine/tests/fixtures/chunking/python/unicode_crlf.py.expected.json text eol=lf
