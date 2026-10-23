@@ -51,12 +51,18 @@ class VectorStore(Protocol):
         """path의 청크 전체를 새 청크로 교체한다 (ADR-0005). chunks가 비면 path의 청크를 모두 지운다.
 
         **실패 안전성(핵심 계약):** 어느 시점에서 실패하거나 프로세스가 중단돼도
-        - 교체 전 청크는 계속 검색된다 (새 청크가 일부만 보이는 상태로 검색에 노출되지 않는다).
-        - `get_file_hashes`는 이 path에 대해 교체 전 해시를 돌려주거나, 이 path를 아예 돌려주지 않는다
-          (= 다음 증분 색인이 이 파일을 다시 처리한다). 새 해시를 돌려주는 것은 교체가 완전히 끝난 뒤뿐이다.
+        이 path의 상태는 둘 중 하나다.
+        (a) 교체 전 그대로 (청크도, `get_file_hashes`의 해시도), 또는
+        (b) 새 청크가 **전부** 반영됨. 단 옛 청크 중 새 id에 없는 잔여가 함께 남아 있을 수 있다.
+        새 청크가 일부만 보이거나 파일의 검색 가능한 내용이 사라지는 상태는 없다.
+        - (b)의 잔여 상태에서 `get_file_hashes`는 이 path를 돌려주지 않는다
+          (서로 다른 해시가 섞인 path는 제외) → 다음 증분 색인이 이 파일을 다시 처리하고,
+          재호출이 잔여를 정리한다.
         - 같은 인자로 다시 호출하면 최종 상태가 같다 (멱등).
-        성공 시 이 path의 청크는 chunks뿐이다 (이전 청크 중 chunks에 없는 id는 사라진다).
-        모든 chunks의 path는 인자 path와 같아야 한다 (다르면 ValueError).
+        성공 시 이 path의 청크는 chunks뿐이다.
+        - 새 청크를 **한 번의 원자적 쓰기**로 반영해야 한다. 그렇게 쓸 수 없는 크기이면 아무것도 바꾸지 않고
+          `VectorStoreError(detail={"reason": "replace_too_large"})`.
+        - 모든 chunks의 path는 인자 path와 같아야 한다 (다르면 ValueError).
         """
         ...
 
@@ -68,9 +74,9 @@ class VectorStore(Protocol):
         ...
 
     async def get_file_hashes(self, collection: str) -> dict[str, str]:
-        """색인이 **완료된** {path: content_hash}. 증분 색인 시 변경 파일 판별에 사용한다.
+        """색인된 {path: content_hash}. 증분 색인 시 변경 파일 판별에 사용한다.
 
-        교체가 끝나지 않은 path(미완료 새 청크, 서로 다른 해시의 청크가 섞인 path)는 결과에서 뺀다.
+        서로 다른 해시의 청크가 섞인 path(교체 도중 중단된 잔여)는 결과에서 뺀다.
         """
         ...
 

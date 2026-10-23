@@ -87,7 +87,8 @@ class IndexJob:
 class SkippedFile:
     """색인에서 제외된 파일.
 
-    reason: too_large | binary | unreadable | excluded | unsupported (스캐너), parse_error (서비스).
+    reason: too_large | binary | unreadable | excluded | unsupported (스캐너),
+    parse_error | too_many_chunks (서비스).
     """
 
     path: str
