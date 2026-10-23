@@ -5,6 +5,7 @@ from engine.core.interfaces.adapter_registry import LoRAAdapterRegistry
 from engine.core.interfaces.chunker import CodeChunker
 from engine.core.interfaces.embedder import Embedder
 from engine.core.interfaces.llm import LLMProvider
+from engine.core.interfaces.source_scanner import SourceScanner
 from engine.core.interfaces.vector_store import VectorStore
 
 __all__ = [
@@ -13,5 +14,6 @@ __all__ = [
     "Embedder",
     "LLMProvider",
     "LoRAAdapterRegistry",
+    "SourceScanner",
     "VectorStore",
 ]

@@ -156,12 +156,12 @@ sequenceDiagram
     IS->>IS: ① 파일 수집 (.gitignore + exclude_globs, 크기 ≤ 512KB, 바이너리 제외)
     IS->>VS: ② get_file_hashes(collection)
     IS->>IS: ③ diff: 변경·신규 / 삭제 파일 판별 (content_hash 비교)
-    IS->>VS: ④ delete_by_paths(변경 + 삭제 파일)
-    loop 변경·신규 파일 (배치)
-        IS->>CK: ⑤ chunk(SourceFile) → CodeChunk[]
-        IS->>EM: ⑥ embed_documents(texts, batch=32)
-        IS->>VS: ⑦ upsert(chunks, embeddings)
+    loop 변경·신규 파일
+        IS->>CK: ④ chunk(SourceFile) → CodeChunk[]
+        IS->>EM: ⑤ embed_documents(search_text, batch=32)
+        IS->>VS: ⑥ replace_file(path, chunks, embeddings)
     end
+    IS->>VS: ⑦ delete_by_paths(삭제된 파일)
     IS-->>WK: IndexJob(succeeded, stats)
     WK->>BE: Project.last_indexed_commit 갱신
     WK->>GH: FCM index.completed
@@ -189,9 +189,12 @@ sequenceDiagram
 - Chroma 메타데이터: `path`, `language`, `kind`, `symbol`, `start_line`, `end_line`, `content_hash`, `commit_sha`.
 - 컬렉션: `proj_{project_id}` (프로젝트 간 격리, 삭제 시 `drop_collection`).
 
-### 3.3 증분 색인 정책
-- 파일 단위로 처리한다. 변경된 파일은 기존 청크를 **전부 삭제한 뒤 재삽입**한다. 심볼 단위 diff보다 단순하고, 삭제된 심볼이 남는 문제가 없다.
-- 임베딩 모델이 바뀌면 컬렉션의 dimension이 달라지므로 `ensure_collection`에서 오류가 난다. 이때는 `mode: full`로 재색인한다.
+### 3.3 증분 색인 정책 ([ADR-0005](../adr/0005-failure-safe-file-replacement.md))
+- 파일 단위로 처리한다. 변경·신규 파일은 **임베딩을 먼저 끝낸 뒤** `VectorStore.replace_file`로 교체한다 (삭제 후 재삽입 금지). 어느 단계에서 실패해도 교체 전 청크는 계속 검색되고, 다음 증분 색인이 그 파일을 다시 처리한다. 스캔에 없는 (삭제된) 파일만 `delete_by_paths`로 지운다.
+- 변경 판별은 파일 내용 해시가 아니라 **지문** `sha256(content_hash + embed_model + CHUNK_POLICY_VERSION)`으로 한다. 임베딩 모델이나 청킹 정책이 바뀌면 모든 파일이 재색인 대상이 된다.
+- 임베딩 모델 차원이 바뀌면 `mode: full`로 컬렉션을 다시 만든다 (이때만 완료 전까지 검색이 빌 수 있다). 같은 차원이면 `full`도 컬렉션을 유지한 채 교체한다.
+- 파일 하나의 청킹이 `ParseError`로 실패하면 그 파일만 건너뛰고(`skipped`) 잡은 계속한다. 임베딩·저장소 오류는 잡을 `failed`로 끝내되, 이미 교체된 파일은 일관된 상태로 남는다.
+- 취소는 파일 경계에서 반영된다.
 
 ---
 
